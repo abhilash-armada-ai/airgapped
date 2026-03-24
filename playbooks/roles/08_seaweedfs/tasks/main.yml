@@ -1,0 +1,129 @@
+---
+# SeaweedFS deployment role
+# S3-compatible object storage for HuggingFace models and datasets
+
+- name: SeaweedFS | Create namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ seaweedfs_namespace }}"
+    state: present
+
+- name: SeaweedFS | Create TLS certificate (if using step-ca)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: seaweedfs-tls
+        namespace: "{{ seaweedfs_namespace }}"
+      spec:
+        secretName: "{{ seaweedfs_tls_secret_name }}"
+        issuerRef:
+          name: step-ca-issuer
+          kind: ClusterIssuer
+        commonName: "{{ seaweedfs_host }}"
+        dnsNames:
+          - "{{ seaweedfs_host }}"
+  when: seaweedfs_tls_enabled | bool and deploy_step_ca | default(true) | bool
+  failed_when: false
+
+- name: SeaweedFS | Create S3 credentials secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: seaweedfs-s3-credentials
+        namespace: "{{ seaweedfs_namespace }}"
+      type: Opaque
+      stringData:
+        admin_access_key_id: "{{ seaweedfs_access_key }}"
+        admin_secret_access_key: "{{ seaweedfs_secret_key }}"
+        # S3 config for SeaweedFS
+        config.json: |
+          {
+            "identities": [
+              {
+                "name": "admin",
+                "credentials": [
+                  {
+                    "accessKey": "{{ seaweedfs_access_key }}",
+                    "secretKey": "{{ seaweedfs_secret_key }}"
+                  }
+                ],
+                "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+              },
+              {
+                "name": "anonymous",
+                "actions": ["Read", "List"]
+              }
+            ]
+          }
+  no_log: true
+
+- name: SeaweedFS | Deploy with common helm-deploy task
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/common/tasks/helm-deploy.yaml"
+  vars:
+    deploy_name: seaweedfs
+    deploy_repo_name: seaweedfs
+    deploy_namespace: "{{ seaweedfs_namespace }}"
+    deploy_chart_repo: "{{ seaweedfs_chart_repo }}"
+    deploy_chart_name: seaweedfs
+    deploy_chart_version: "{{ seaweedfs_chart_version }}"
+    deploy_timeout: "15m"
+
+- name: SeaweedFS | Wait for master to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: seaweedfs-master
+    namespace: "{{ seaweedfs_namespace }}"
+  register: seaweedfs_master
+  until:
+    - seaweedfs_master.resources | length > 0
+    - seaweedfs_master.resources[0].status.readyReplicas | default(0) >= 1
+  retries: 30
+  delay: 10
+
+- name: SeaweedFS | Wait for S3 to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: seaweedfs-s3
+    namespace: "{{ seaweedfs_namespace }}"
+  register: seaweedfs_s3
+  until:
+    - seaweedfs_s3.resources | length > 0
+    - seaweedfs_s3.resources[0].status.readyReplicas | default(0) >= 1
+  retries: 30
+  delay: 10
+  when: seaweedfs_s3_enabled | bool
+
+- name: SeaweedFS | Create S3 buckets
+  ansible.builtin.include_tasks: create-buckets.yml
+  when: seaweedfs_buckets is defined
+
+- name: SeaweedFS | Display access information
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      SeaweedFS deployed successfully!
+      ============================================
+      S3 Endpoint: https://{{ seaweedfs_host }}
+      Access Key: (set via SEAWEEDFS_ACCESS_KEY env)
+      Secret Key: (set via SEAWEEDFS_SECRET_KEY env)
+
+      AWS CLI configuration:
+        aws configure  # Enter your access/secret keys
+        aws configure set default.s3.endpoint_url https://{{ seaweedfs_host }}
+
+      Example usage:
+        aws s3 ls --endpoint-url https://{{ seaweedfs_host }}
+        aws s3 cp model.bin s3://huggingface-models/ --endpoint-url https://{{ seaweedfs_host }}
+
+      For HuggingFace integration, set in pods:
+        HF_ENDPOINT=https://{{ seaweedfs_host }}/huggingface-models
+      ============================================

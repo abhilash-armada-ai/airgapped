@@ -1,0 +1,258 @@
+---
+# Seeding Playbook - Run from an internet-connected machine
+# Populates air-gap infrastructure with images, charts, and artifacts
+#
+# Usage:
+#   ansible-playbook playbooks/seed.yml -e "harbor_host=harbor.internal.local"
+#
+# This playbook:
+#   1. Pulls container images from public registries
+#   2. Pushes them to internal Harbor
+#   3. Downloads Helm charts and pushes to Harbor OCI
+#   4. Downloads binary artifacts and uploads to Nexus
+
+- name: Seed Air-Gap Infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+
+  vars:
+    # Override these for your environment
+    seed_temp_dir: "/tmp/airgap-seed"
+
+    # Container images to mirror (from Air-Gapped.docx audit)
+    seed_images:
+      # Kubernetes core
+      - source: "registry.k8s.io/kube-apiserver:v1.31.0"
+        target: "k8s-proxy/kube-apiserver:v1.31.0"
+      - source: "registry.k8s.io/kube-controller-manager:v1.31.0"
+        target: "k8s-proxy/kube-controller-manager:v1.31.0"
+      - source: "registry.k8s.io/kube-scheduler:v1.31.0"
+        target: "k8s-proxy/kube-scheduler:v1.31.0"
+      - source: "registry.k8s.io/coredns/coredns:v1.11.1"
+        target: "k8s-proxy/coredns:v1.11.1"
+      - source: "registry.k8s.io/kube-proxy:v1.31.0"
+        target: "k8s-proxy/kube-proxy:v1.31.0"
+      - source: "registry.k8s.io/pause:3.9"
+        target: "k8s-proxy/pause:3.9"
+
+      # Kamaji / Konnectivity
+      - source: "registry.k8s.io/kas-network-proxy/proxy-server:v0.28.6"
+        target: "k8s-proxy/kas-network-proxy/proxy-server:v0.28.6"
+      - source: "registry.k8s.io/kas-network-proxy/proxy-agent:v0.28.6"
+        target: "k8s-proxy/kas-network-proxy/proxy-agent:v0.28.6"
+
+      # NFS CSI
+      - source: "registry.k8s.io/sig-storage/csi-provisioner:v3.6.0"
+        target: "k8s-proxy/sig-storage/csi-provisioner:v3.6.0"
+      - source: "registry.k8s.io/sig-storage/nfsplugin:v4.5.0"
+        target: "k8s-proxy/sig-storage/nfsplugin:v4.5.0"
+
+      # Local Path Provisioner (storage)
+      - source: "rancher/local-path-provisioner:v0.0.30"
+        target: "dockerhub-proxy/rancher/local-path-provisioner:v0.0.30"
+
+      # NVIDIA
+      - source: "nvcr.io/nvidia/gpu-operator:v25.10.1"
+        target: "nvcr-proxy/nvidia/gpu-operator:v25.10.1"
+
+      # AI/ML workloads (pin versions!)
+      - source: "vllm/vllm-openai:v0.6.0"
+        target: "dockerhub-proxy/vllm/vllm-openai:v0.6.0"
+      - source: "quay.io/jupyter/pytorch-notebook:cuda12-python-3.11.8"
+        target: "quay-proxy/jupyter/pytorch-notebook:cuda12-python-3.11.8"
+      - source: "busybox:1.36"
+        target: "dockerhub-proxy/busybox:1.36"
+
+      # Karpenter
+      - source: "amcopnightly/karpenter-clusterapi-controller:v1.0.1"
+        target: "amcop/karpenter-clusterapi-controller:v1.0.1"
+
+    # Helm charts to mirror
+    seed_helm_charts:
+      - repo: "https://charts.jetstack.io"
+        name: "cert-manager"
+        version: "v1.14.0"
+      - repo: "https://charts.external-secrets.io"
+        name: "external-secrets"
+        version: "0.18.0"
+      - repo: "https://hub.jupyter.org/helm-chart"
+        name: "jupyterhub"
+        version: "4.2.0"
+      - repo: "https://prometheus-community.github.io/helm-charts"
+        name: "kube-state-metrics"
+        version: "6.1.2"
+      - repo: "https://ray-project.github.io/kuberay-helm"
+        name: "kuberay-operator"
+        version: "1.4.1"
+      - repo: "https://kubernetes.github.io/ingress-nginx"
+        name: "ingress-nginx"
+        version: "4.12.3"
+      - repo: "https://helm.ngc.nvidia.com/nvidia"
+        name: "gpu-operator"
+        version: "v25.10.1"
+      - repo: "https://helm.ngc.nvidia.com/nvidia"
+        name: "nim-operator"
+        version: "v2.0.2"
+      - repo: "https://kubernetes-sigs.github.io/node-feature-discovery/charts"
+        name: "node-feature-discovery"
+        version: "0.18.3"
+      - repo: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+        name: "opentelemetry-collector"
+        version: "0.126.0"
+      - repo: "https://rocm.github.io/gpu-operator"
+        name: "rocm-gpu-operator"
+        version: "v1.4.0"
+      - repo: "https://helm.cilium.io"
+        name: "cilium"
+        version: "1.16.0"
+      # local-path-provisioner uses manifest deployment, no Helm chart needed
+      - repo: "https://helm.releases.hashicorp.com"
+        name: "vault"
+        version: "0.28.0"
+
+    # Binary artifacts to download
+    seed_artifacts:
+      - url: "https://download.nvidia.com/XFree86/Linux-x86_64/580.95.05/NVIDIA-Linux-x86_64-580.95.05.run"
+        dest: "nvidia-drivers/NVIDIA-Linux-x86_64-580.95.05.run"
+      - url: "https://content.mellanox.com/ofed/MLNX_OFED-24.10-1.1.4.0/MLNX_OFED_LINUX-24.10-1.1.4.0-ubuntu22.04-x86_64.tgz"
+        dest: "ofed/MLNX_OFED_LINUX-24.10-1.1.4.0-ubuntu22.04-x86_64.tgz"
+      - url: "https://github.com/prometheus/node_exporter/releases/download/v1.8.2/node_exporter-1.8.2.linux-amd64.tar.gz"
+        dest: "prometheus/node_exporter-1.8.2.linux-amd64.tar.gz"
+      - url: "https://download.schedmd.com/slurm/slurm-24.05.0.tar.bz2"
+        dest: "slurm/slurm-24.05.0.tar.bz2"
+
+  tasks:
+    - name: Seed | Create temporary directory
+      ansible.builtin.file:
+        path: "{{ seed_temp_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Seed | Check for required tools
+      ansible.builtin.command: "which {{ item }}"
+      loop:
+        - skopeo
+        - helm
+        - curl
+      changed_when: false
+      register: tool_check
+      failed_when: tool_check.rc != 0
+
+    # ==========================================
+    # Container Images
+    # ==========================================
+    - name: Seed | Login to Harbor
+      ansible.builtin.command: >
+        skopeo login {{ harbor_host }}
+        --username admin
+        --password {{ harbor_admin_password }}
+        --tls-verify=false
+      changed_when: false
+      no_log: true
+
+    - name: Seed | Mirror container images to Harbor
+      ansible.builtin.command: >
+        skopeo copy
+        --dest-tls-verify=false
+        docker://{{ item.source }}
+        docker://{{ harbor_host }}/{{ item.target }}
+      loop: "{{ seed_images }}"
+      loop_control:
+        label: "{{ item.source }} -> {{ item.target }}"
+      register: image_mirror
+      changed_when: image_mirror.rc == 0
+
+    # ==========================================
+    # Helm Charts
+    # ==========================================
+    - name: Seed | Login to Harbor Helm registry
+      ansible.builtin.command: >
+        helm registry login {{ harbor_host }}
+        --username admin
+        --password {{ harbor_admin_password }}
+        --insecure
+      changed_when: false
+      no_log: true
+
+    - name: Seed | Download and push Helm charts
+      block:
+        - name: Seed | Add Helm repositories
+          ansible.builtin.command: >
+            helm repo add {{ item.name }}-repo {{ item.repo }}
+          loop: "{{ seed_helm_charts }}"
+          loop_control:
+            label: "{{ item.name }}"
+          changed_when: false
+          failed_when: false
+
+        - name: Seed | Update Helm repositories
+          ansible.builtin.command: helm repo update
+          changed_when: false
+
+        - name: Seed | Pull charts
+          ansible.builtin.command: >
+            helm pull {{ item.name }}-repo/{{ item.name }}
+            --version {{ item.version }}
+            --destination {{ seed_temp_dir }}
+          loop: "{{ seed_helm_charts }}"
+          loop_control:
+            label: "{{ item.name }}:{{ item.version }}"
+          changed_when: false
+
+        - name: Seed | Push charts to Harbor OCI
+          ansible.builtin.shell: |
+            for chart in {{ seed_temp_dir }}/*.tgz; do
+              helm push "$chart" oci://{{ harbor_host }}/helm --insecure-skip-tls-verify
+            done
+          changed_when: false
+
+    # ==========================================
+    # Binary Artifacts
+    # ==========================================
+    - name: Seed | Download binary artifacts
+      ansible.builtin.get_url:
+        url: "{{ item.url }}"
+        dest: "{{ seed_temp_dir }}/{{ item.dest | basename }}"
+        mode: '0644'
+      loop: "{{ seed_artifacts }}"
+      loop_control:
+        label: "{{ item.dest | basename }}"
+
+    - name: Seed | Upload artifacts to Nexus
+      ansible.builtin.uri:
+        url: "https://{{ nexus_host }}/repository/raw-hosted/{{ item.dest }}"
+        method: PUT
+        user: admin
+        password: "{{ nexus_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        src: "{{ seed_temp_dir }}/{{ item.dest | basename }}"
+        status_code: [201, 204]
+      loop: "{{ seed_artifacts }}"
+      loop_control:
+        label: "{{ item.dest }}"
+
+    # ==========================================
+    # Cleanup
+    # ==========================================
+    - name: Seed | Cleanup temporary directory
+      ansible.builtin.file:
+        path: "{{ seed_temp_dir }}"
+        state: absent
+      when: cleanup_temp | default(true) | bool
+
+    - name: Seed | Display summary
+      ansible.builtin.debug:
+        msg: |
+          ============================================
+          Seeding Complete!
+          ============================================
+          Container images mirrored: {{ seed_images | length }}
+          Helm charts pushed: {{ seed_helm_charts | length }}
+          Artifacts uploaded: {{ seed_artifacts | length }}
+
+          Your air-gap infrastructure is now populated.
+          ============================================

@@ -1,0 +1,38 @@
+---
+# Harbor role defaults
+# These can be overridden in group_vars/all.yml or inventory
+
+harbor_namespace: "harbor"
+harbor_host: "harbor.internal.local"
+harbor_chart_repo: "https://helm.goharbor.io"
+harbor_chart_name: "harbor"
+harbor_chart_version: "1.18.3"
+
+harbor_admin_password: "Harbor12345"
+harbor_secret_key: "not-a-secure-key"
+
+# Storage configuration
+harbor_storage_class: "{{ storage_class | default('local-path') }}"
+harbor_registry_storage_size: "500Gi"
+harbor_database_storage_size: "5Gi"
+harbor_redis_storage_size: "1Gi"
+harbor_trivy_storage_size: "5Gi"
+harbor_jobservice_storage_size: "1Gi"
+
+# TLS configuration
+harbor_tls_enabled: "{{ enable_tls | default(true) }}"
+harbor_tls_secret_name: "harbor-tls"
+
+# Ingress configuration
+harbor_ingress_class: "{{ ingress_class_name | default('nginx') }}"
+
+# Component toggles
+harbor_trivy_enabled: true
+harbor_notary_enabled: false
+harbor_chartmuseum_enabled: false  # Deprecated, use OCI for Helm
+
+# Resource limits (single-instance mode)
+harbor_core_replicas: 1
+harbor_jobservice_replicas: 1
+harbor_registry_replicas: 1
+harbor_portal_replicas: 1

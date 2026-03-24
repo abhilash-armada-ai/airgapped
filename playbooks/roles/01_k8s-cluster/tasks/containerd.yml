@@ -1,0 +1,32 @@
+---
+# Install and configure containerd from OS repositories
+
+- name: Containerd | Install from OS repository
+  ansible.builtin.apt:
+    name: "{{ containerd_packages }}"
+    state: present
+    update_cache: true
+
+- name: Containerd | Create config directory
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+
+- name: Containerd | Generate default config
+  ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+  args:
+    creates: /etc/containerd/config.toml
+
+- name: Containerd | Enable SystemdCgroup
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+
+- name: Containerd | Enable and start service
+  ansible.builtin.systemd:
+    name: containerd
+    enabled: true
+    state: restarted
+    daemon_reload: true

@@ -1,0 +1,9 @@
+---
+# Ansible Galaxy requirements for air-gap infrastructure deployment
+# Install with: ansible-galaxy install -r requirements.yml
+
+collections:
+  - name: kubernetes.core
+    version: ">=6.3.0"
+  - name: community.general
+    version: ">=12.4.0"

@@ -1,0 +1,97 @@
+---
+# Nexus Repository Manager deployment
+# Deployed via raw Kubernetes manifests (Helm chart deprecated by Sonatype)
+# Version: 3.90.1 Community Edition
+
+- name: Nexus | Create namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ nexus_namespace }}"
+    state: present
+
+- name: Nexus | Create TLS certificate (if using step-ca)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: nexus-tls
+        namespace: "{{ nexus_namespace }}"
+      spec:
+        secretName: "{{ nexus_tls_secret_name }}"
+        issuerRef:
+          name: step-ca-issuer
+          kind: ClusterIssuer
+        commonName: "{{ nexus_host }}"
+        dnsNames:
+          - "{{ nexus_host }}"
+  when: nexus_tls_enabled | bool and deploy_step_ca | default(true) | bool
+  failed_when: false
+
+- name: Nexus | Deploy PersistentVolumeClaim
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'manifests/pvc.yaml.j2') | from_yaml }}"
+
+- name: Nexus | Deploy Deployment
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'manifests/deployment.yaml.j2') | from_yaml }}"
+
+- name: Nexus | Deploy Service
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'manifests/service.yaml.j2') | from_yaml }}"
+
+- name: Nexus | Deploy Ingress
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'manifests/ingress.yaml.j2') | from_yaml }}"
+
+- name: Nexus | Wait for deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: nexus
+    namespace: "{{ nexus_namespace }}"
+  register: nexus_deployment
+  until:
+    - nexus_deployment.resources | length > 0
+    - nexus_deployment.resources[0].status.readyReplicas | default(0) >= 1
+  retries: 60
+  delay: 10
+
+- name: Nexus | Wait for Nexus to be fully initialized
+  ansible.builtin.pause:
+    seconds: 60
+
+- name: Nexus | Configure repositories
+  ansible.builtin.include_tasks: configure-repositories.yml
+  when: nexus_configure_repositories | default(true) | bool
+
+- name: Nexus | Display access information
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      Nexus Repository Manager deployed successfully!
+      ============================================
+      Version: {{ nexus_image_tag }} (Community Edition)
+      URL: https://{{ nexus_host }}
+      Username: admin
+      Password: {{ nexus_admin_password }}
+
+      APT configuration (add to /etc/apt/sources.list.d/):
+        deb https://{{ nexus_host }}/repository/ubuntu-archive/ jammy main
+
+      PyPI configuration (pip.conf):
+        [global]
+        index-url = https://{{ nexus_host }}/repository/pypi-proxy/simple/
+        trusted-host = {{ nexus_host }}
+
+      Raw artifact upload:
+        curl -u admin:{{ nexus_admin_password }} \
+          --upload-file ./artifact.tar.gz \
+          https://{{ nexus_host }}/repository/raw-hosted/path/to/artifact.tar.gz
+      ============================================

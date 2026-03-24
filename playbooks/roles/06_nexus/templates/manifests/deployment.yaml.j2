@@ -1,0 +1,63 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus
+  namespace: {{ nexus_namespace }}
+  labels:
+    app: nexus
+spec:
+  replicas: {{ nexus_replicas }}
+  selector:
+    matchLabels:
+      app: nexus
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: nexus
+    spec:
+      securityContext:
+        fsGroup: 200
+      containers:
+        - name: nexus
+          image: {{ nexus_image }}:{{ nexus_image_tag }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: INSTALL4J_ADD_VM_PARAMS
+              value: "-Xms{{ nexus_java_heap_size }} -Xmx{{ nexus_java_heap_size }} -XX:MaxDirectMemorySize={{ nexus_java_direct_memory }} -Djava.util.prefs.userRoot=/nexus-data/javaprefs"
+            - name: NEXUS_SECURITY_RANDOMPASSWORD
+              value: "false"
+          resources:
+            requests:
+              memory: {{ nexus_memory_request }}
+              cpu: {{ nexus_cpu_request }}
+            limits:
+              memory: {{ nexus_memory_limit }}
+              cpu: {{ nexus_cpu_limit }}
+          volumeMounts:
+            - name: nexus-data
+              mountPath: /nexus-data
+          livenessProbe:
+            httpGet:
+              path: /service/rest/v1/status
+              port: 8081
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /service/rest/v1/status
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 6
+      volumes:
+        - name: nexus-data
+          persistentVolumeClaim:
+            claimName: nexus-data

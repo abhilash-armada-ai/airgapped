@@ -1,0 +1,54 @@
+---
+# Create S3 buckets in SeaweedFS
+# Uses weed shell or filer HTTP API
+
+- name: S3 Buckets | Get filer pod name
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ seaweedfs_namespace }}"
+    label_selectors:
+      - "app.kubernetes.io/name=seaweedfs"
+      - "app.kubernetes.io/component=filer"
+  register: filer_pods
+
+# Alternative label selector if the above doesn't match
+- name: S3 Buckets | Get filer pod name (alternative labels)
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ seaweedfs_namespace }}"
+    label_selectors:
+      - "app=seaweedfs"
+      - "component=filer"
+  register: filer_pods_alt
+  when: filer_pods.resources | length == 0
+
+- name: S3 Buckets | Set filer pod fact
+  ansible.builtin.set_fact:
+    _filer_pod_name: "{{ (filer_pods.resources | first).metadata.name if filer_pods.resources | length > 0 else ((filer_pods_alt.resources | first).metadata.name if filer_pods_alt.resources | default([]) | length > 0 else '') }}"
+
+- name: S3 Buckets | Create buckets via weed shell
+  kubernetes.core.k8s_exec:
+    namespace: "{{ seaweedfs_namespace }}"
+    pod: "{{ _filer_pod_name }}"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "s3.bucket.create -name {{ item.name }}" | /usr/bin/weed shell -master seaweedfs-master:9333
+  loop: "{{ seaweedfs_buckets }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: bucket_results
+  failed_when: false
+  changed_when: bucket_results.rc == 0
+  when: _filer_pod_name | length > 0
+
+- name: S3 Buckets | Display created buckets
+  ansible.builtin.debug:
+    msg: |
+      S3 buckets configured:
+      {% for bucket in seaweedfs_buckets %}
+        - s3://{{ bucket.name }}/ - {{ bucket.description | default('') }}
+      {% endfor %}

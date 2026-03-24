@@ -1,0 +1,43 @@
+---
+# SeaweedFS role defaults
+# S3-compatible distributed object storage
+
+seaweedfs_namespace: "seaweedfs"
+seaweedfs_host: "s3.internal.local"
+seaweedfs_chart_repo: "https://seaweedfs.github.io/seaweedfs/helm"
+seaweedfs_chart_name: "seaweedfs"
+seaweedfs_chart_version: "4.17.0"
+
+# S3 credentials
+seaweedfs_access_key: "minioadmin"
+seaweedfs_secret_key: "minioadmin"
+
+# Storage configuration
+seaweedfs_storage_class: "{{ storage_class | default('local-path') }}"
+seaweedfs_master_storage_size: "10Gi"
+seaweedfs_volume_storage_size: "100Gi"
+seaweedfs_filer_storage_size: "10Gi"
+
+# TLS configuration
+seaweedfs_tls_enabled: "{{ enable_tls | default(true) }}"
+seaweedfs_tls_secret_name: "seaweedfs-tls"
+
+# Ingress configuration
+seaweedfs_ingress_class: "{{ ingress_class_name | default('nginx') }}"
+
+# Component configuration (single-instance)
+seaweedfs_master_replicas: 1
+seaweedfs_volume_replicas: 1
+seaweedfs_filer_replicas: 1
+
+# Resource configuration
+seaweedfs_master_memory_request: "256Mi"
+seaweedfs_master_memory_limit: "512Mi"
+seaweedfs_volume_memory_request: "512Mi"
+seaweedfs_volume_memory_limit: "1Gi"
+seaweedfs_filer_memory_request: "256Mi"
+seaweedfs_filer_memory_limit: "512Mi"
+
+# S3 API configuration
+seaweedfs_s3_enabled: true
+seaweedfs_s3_port: 8333

@@ -1,0 +1,50 @@
+---
+# Local Path Provisioner storage role defaults
+# These can be overridden in group_vars/all.yml or inventory
+
+storage_namespace: "local-path-storage"
+
+# Deployment method: "manifest" or "helm"
+storage_deploy_method: "manifest"
+
+# For manifest deployment - official release
+storage_manifest_version: "v0.0.30"
+storage_manifest_url: "https://raw.githubusercontent.com/rancher/local-path-provisioner/{{ storage_manifest_version }}/deploy/local-path-storage.yaml"
+
+# For helm deployment
+storage_chart_repo: "https://charts.containeroo.ch"
+storage_chart_name: "local-path-provisioner"
+storage_chart_version: "0.0.30"
+
+# StorageClass configuration
+storage_class_name: "local-path"
+storage_set_default: true
+
+# Data path on nodes where volumes are stored
+storage_data_path: "/opt/local-path-provisioner"
+
+# Node path map - allows per-node path configuration
+# If empty, uses storage_data_path for all nodes
+storage_node_path_map: []
+# Example:
+#   - node: "worker-1"
+#     paths:
+#       - "/mnt/ssd/local-path"
+#   - node: "worker-2"
+#     paths:
+#       - "/data/local-path"
+
+# Reclaim policy: Delete or Retain
+storage_reclaim_policy: "Delete"
+
+# Volume binding mode: WaitForFirstConsumer or Immediate
+storage_volume_binding_mode: "WaitForFirstConsumer"
+
+# Image configuration (for air-gap scenarios)
+storage_image: "rancher/local-path-provisioner"
+storage_image_tag: "v0.0.30"
+storage_helper_image: "busybox"
+storage_helper_image_tag: "stable"
+
+# Debug logging
+storage_debug: false

@@ -1,0 +1,50 @@
+---
+# Nexus role defaults
+# Sonatype Nexus Repository Manager Community Edition
+# Deployed via raw Kubernetes manifests (Helm chart deprecated)
+
+nexus_namespace: "nexus"
+nexus_host: "nexus.internal.local"
+
+# Image configuration (latest Community Edition)
+nexus_image: "sonatype/nexus3"
+nexus_image_tag: "3.90.1"
+
+nexus_admin_password: "admin123"
+
+# Storage configuration
+nexus_storage_class: "{{ storage_class | default('local-path') }}"
+nexus_storage_size: "100Gi"
+
+# TLS configuration
+nexus_tls_enabled: "{{ enable_tls | default(true) }}"
+nexus_tls_secret_name: "nexus-tls"
+
+# Ingress configuration
+nexus_ingress_class: "{{ ingress_class_name | default('nginx') }}"
+
+# Resource configuration (single-instance)
+nexus_replicas: 1
+nexus_memory_request: "2Gi"
+nexus_memory_limit: "4Gi"
+nexus_cpu_request: "500m"
+nexus_cpu_limit: "2"
+
+# JVM configuration
+nexus_java_heap_size: "2048m"
+nexus_java_direct_memory: "2g"
+
+# Service configuration
+nexus_service_port: 8081
+
+# Default repository configuration
+nexus_configure_repositories: true
+nexus_repositories:
+  - name: "raw-hosted"
+    type: "raw-hosted"
+  - name: "ubuntu-archive"
+    type: "apt-proxy"
+    remote_url: "http://archive.ubuntu.com/ubuntu"
+  - name: "pypi-proxy"
+    type: "pypi-proxy"
+    remote_url: "https://pypi.org"

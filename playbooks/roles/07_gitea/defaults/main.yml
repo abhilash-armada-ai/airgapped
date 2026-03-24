@@ -1,0 +1,37 @@
+---
+# Gitea role defaults
+# Lightweight Git server for air-gap environments
+
+gitea_namespace: "gitea"
+gitea_host: "gitea.internal.local"
+gitea_chart_repo: "https://dl.gitea.com/charts"
+gitea_chart_name: "gitea"
+gitea_chart_version: "12.5.0"
+
+gitea_admin_username: "gitea_admin"
+gitea_admin_password: "Gitea12345"
+gitea_admin_email: "admin@internal.local"
+
+# Storage configuration
+gitea_storage_class: "{{ storage_class | default('local-path') }}"
+gitea_storage_size: "20Gi"
+gitea_db_storage_size: "5Gi"
+
+# TLS configuration
+gitea_tls_enabled: "{{ enable_tls | default(true) }}"
+gitea_tls_secret_name: "gitea-tls"
+
+# Ingress configuration
+gitea_ingress_class: "{{ ingress_class_name | default('nginx') }}"
+
+# Resource configuration (single-instance)
+gitea_replicas: 1
+gitea_memory_request: "256Mi"
+gitea_memory_limit: "1Gi"
+gitea_cpu_request: "100m"
+gitea_cpu_limit: "1"
+
+# SSH configuration
+gitea_ssh_enabled: true
+gitea_ssh_port: 22
+gitea_ssh_service_type: "LoadBalancer"

@@ -1,0 +1,38 @@
+---
+# step-ca role defaults
+# Private ACME-compatible Certificate Authority
+
+step_ca_namespace: "step-ca"
+step_ca_host: "ca.internal.local"
+step_ca_chart_repo: "https://smallstep.github.io/helm-charts"
+step_ca_chart_name: "step-certificates"
+step_ca_chart_version: "1.30.0"
+
+# CA configuration
+step_ca_provisioner_name: "acme"
+step_ca_provisioner_password: "StepCA12345"
+step_ca_root_cn: "Air-Gap Root CA"
+step_ca_intermediate_cn: "Air-Gap Intermediate CA"
+step_ca_validity_duration: "8760h"  # 1 year
+
+# Storage configuration
+step_ca_storage_class: "{{ storage_class | default('local-path') }}"
+step_ca_storage_size: "5Gi"
+
+# TLS configuration (step-ca provisions its own certs)
+step_ca_tls_enabled: true
+
+# Ingress configuration
+step_ca_ingress_class: "{{ ingress_class_name | default('nginx') }}"
+
+# Resource configuration
+step_ca_replicas: 1
+step_ca_memory_request: "128Mi"
+step_ca_memory_limit: "256Mi"
+step_ca_cpu_request: "100m"
+step_ca_cpu_limit: "500m"
+
+# cert-manager integration
+step_ca_install_cert_manager: true
+step_ca_cert_manager_version: "v1.20.0"
+step_ca_create_cluster_issuer: true

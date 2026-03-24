@@ -1,0 +1,35 @@
+---
+# Install Kubernetes packages (kubeadm, kubelet, kubectl)
+
+- name: K8s Packages | Add Kubernetes GPG key
+  ansible.builtin.apt_key:
+    url: "{{ k8s_apt_key_url }}"
+    state: present
+
+- name: K8s Packages | Add Kubernetes repository
+  ansible.builtin.apt_repository:
+    repo: "deb {{ k8s_apt_repo }} /"
+    state: present
+    filename: kubernetes
+
+- name: K8s Packages | Install Kubernetes packages
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ k8s_version }}-*"
+      - "kubeadm={{ k8s_version }}-*"
+      - "kubectl={{ k8s_version }}-*"
+    state: present
+    update_cache: true
+    allow_downgrades: true
+
+- name: K8s Packages | Hold Kubernetes packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: "{{ k8s_packages }}"
+
+- name: K8s Packages | Enable kubelet service
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+    state: started

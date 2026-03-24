@@ -1,0 +1,66 @@
+---
+# Configure Gitea mirror repositories
+# Creates organizations and sets up mirrors from external Git sources
+
+- name: Gitea | Wait for API to be ready
+  ansible.builtin.uri:
+    url: "https://{{ gitea_host }}/api/v1/version"
+    method: GET
+    validate_certs: false
+  register: gitea_health
+  until: gitea_health.status == 200
+  retries: 30
+  delay: 10
+
+- name: Gitea | Get unique organizations from mirror repos
+  ansible.builtin.set_fact:
+    gitea_orgs: "{{ gitea_mirror_repos | map(attribute='org') | unique | list }}"
+
+- name: Gitea | Create organizations
+  ansible.builtin.uri:
+    url: "https://{{ gitea_host }}/api/v1/orgs"
+    method: POST
+    user: "{{ gitea_admin_username }}"
+    password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      username: "{{ item }}"
+      full_name: "{{ item | title }}"
+      visibility: "public"
+    status_code: [201, 422]  # 422 = already exists
+  loop: "{{ gitea_orgs }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Gitea | Create mirror repositories
+  ansible.builtin.uri:
+    url: "https://{{ gitea_host }}/api/v1/repos/migrate"
+    method: POST
+    user: "{{ gitea_admin_username }}"
+    password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      clone_addr: "{{ item.source }}"
+      repo_name: "{{ item.name }}"
+      repo_owner: "{{ item.org }}"
+      mirror: true
+      private: false
+      description: "Mirror of {{ item.source }}"
+    status_code: [201, 409]  # 409 = already exists
+    timeout: 300  # Allow time for initial clone
+  loop: "{{ gitea_mirror_repos }}"
+  loop_control:
+    label: "{{ item.org }}/{{ item.name }}"
+  register: mirror_results
+
+- name: Gitea | Display configured mirrors
+  ansible.builtin.debug:
+    msg: |
+      Gitea mirror repositories configured:
+      {% for repo in gitea_mirror_repos %}
+        - {{ repo.org }}/{{ repo.name }} <- {{ repo.source }}
+      {% endfor %}

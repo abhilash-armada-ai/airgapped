@@ -1,0 +1,201 @@
+---
+# Air-Gap Infrastructure Deployment Playbook
+# ===========================================
+# Deploys: Kubernetes cluster + Harbor, Nexus, Gitea, step-ca, SeaweedFS
+#
+# Usage:
+#   # Full deployment
+#   ansible-playbook -i inventory/hosts.yml playbooks/site.yml
+#
+#   # Skip K8s cluster installation (use existing cluster)
+#   ansible-playbook -i inventory/hosts.yml playbooks/site.yml --skip-tags k8s-cluster
+#
+#   # Deploy specific components
+#   ansible-playbook -i inventory/hosts.yml playbooks/site.yml --tags harbor,nexus
+#
+# Tags:
+#   - k8s-cluster: Kubernetes cluster installation
+#   - ingress: nginx-ingress controller
+#   - storage: Local-path-provisioner storage
+#   - step-ca: Private ACME CA
+#   - harbor: Container/Helm registry
+#   - nexus: Artifact repository
+#   - gitea: Git server
+#   - seaweedfs: S3-compatible object storage
+
+# ============================================
+# PLAY 0: Build Dynamic Inventory
+# ============================================
+# Adds masters and workers from group_vars configuration
+- name: Build Dynamic Inventory for K8s Cluster
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+  tags:
+    - k8s-cluster
+
+  tasks:
+    - name: Add master nodes to inventory
+      ansible.builtin.add_host:
+        name: "{{ item.hostname }}"
+        groups: masters
+        ansible_host: "{{ item.ip }}"
+        ansible_user: "{{ k8s_cluster.ssh.user | default('ubuntu') }}"
+        ansible_ssh_private_key_file: "{{ k8s_cluster.ssh.private_key_path | default('~/.ssh/id_rsa') }}"
+        ansible_become: "{{ k8s_cluster.ssh.become | default(true) }}"
+      loop: "{{ k8s_cluster.masters | default([]) }}"
+      when:
+        - deploy_k8s_cluster | default(true) | bool
+        - k8s_cluster.masters is defined
+        - k8s_cluster.masters | length > 0
+
+    - name: Add worker nodes to inventory
+      ansible.builtin.add_host:
+        name: "{{ item.hostname }}"
+        groups: workers
+        ansible_host: "{{ item.ip }}"
+        ansible_user: "{{ k8s_cluster.ssh.user | default('ubuntu') }}"
+        ansible_ssh_private_key_file: "{{ k8s_cluster.ssh.private_key_path | default('~/.ssh/id_rsa') }}"
+        ansible_become: "{{ k8s_cluster.ssh.become | default(true) }}"
+      loop: "{{ k8s_cluster.workers | default([]) }}"
+      when:
+        - deploy_k8s_cluster | default(true) | bool
+        - k8s_cluster.workers is defined
+        - k8s_cluster.workers | length > 0
+
+    - name: Display cluster node configuration
+      ansible.builtin.debug:
+        msg: |
+          K8s Cluster Configuration:
+            Masters: {{ k8s_cluster.masters | default([]) | map(attribute='hostname') | list }}
+            Workers: {{ k8s_cluster.workers | default([]) | map(attribute='hostname') | list }}
+      when: deploy_k8s_cluster | default(true) | bool
+
+# ============================================
+# PLAY 1: Kubernetes Cluster Installation
+# ============================================
+# Installs kubeadm-based Kubernetes on master and worker nodes
+- name: Kubernetes Cluster Installation
+  hosts: masters:workers
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+  tags:
+    - k8s-cluster
+
+  roles:
+    - role: 01_k8s-cluster
+      when: deploy_k8s_cluster | default(true) | bool
+
+# ============================================
+# PLAY 2: Air-Gap Infrastructure Deployment
+# ============================================
+# Deploys all infrastructure services on the bastion host
+- name: Air-Gap Infrastructure Deployment
+  hosts: bastion
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Verify kubectl connectivity
+      ansible.builtin.command: kubectl cluster-info
+      changed_when: false
+      register: cluster_info
+      failed_when: cluster_info.rc != 0
+      tags: always
+
+    - name: Display cluster connection status
+      ansible.builtin.debug:
+        msg: "Successfully connected to Kubernetes cluster"
+      tags: always
+
+  roles:
+    # 00 - Prerequisites: Verify kubectl/helm availability
+    - role: 00_prerequisites
+      tags: [prerequisites, always]
+
+    # 02 - Ingress: nginx-ingress controller for external access
+    - role: 02_ingress
+      tags: [ingress]
+      when: deploy_ingress | default(true) | bool
+
+    # 03 - step-ca: Private ACME CA for internal TLS certificates
+    # NOTE: Moved BEFORE storage so ClusterIssuer is available for TLS certs
+    - role: 04_step-ca
+      tags: [step-ca]
+      when: deploy_step_ca | default(true) | bool
+
+    # 04 - Storage: Local-path-provisioner for persistent volumes
+    # NOTE: Simple storage suitable for single-node/development clusters
+    - role: 03_storage
+      tags: [storage]
+      when: deploy_storage | default(true) | bool
+
+    # 05 - Harbor: Container registry + Helm OCI registry
+    - role: 05_harbor
+      tags: [harbor]
+      when: deploy_harbor | default(true) | bool
+
+    # 06 - Nexus: Artifact repository (APT, PyPI, raw binaries)
+    - role: 06_nexus
+      tags: [nexus]
+      when: deploy_nexus | default(true) | bool
+
+    # 07 - Gitea: Internal Git server with mirroring
+    - role: 07_gitea
+      tags: [gitea]
+      when: deploy_gitea | default(true) | bool
+
+    # 08 - SeaweedFS: S3-compatible object storage
+    - role: 08_seaweedfs
+      tags: [seaweedfs]
+      when: deploy_seaweedfs | default(true) | bool
+
+  post_tasks:
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg: |
+
+          =====================================================
+          Air-Gap Infrastructure Deployment Complete
+          =====================================================
+
+          Service URLs:
+          -----------------------------------------------------
+          Ingress:     {{ 'Deployed (' + ingress.class_name + ')' if deploy_ingress | default(true) | bool else 'Skipped' }}
+          Storage:     {{ 'Deployed (' + storage.class_name + ')' if deploy_storage | default(true) | bool else 'Skipped' }}
+
+          step-ca:     {{ 'https://' + step_ca_host if deploy_step_ca | default(true) | bool else 'Skipped' }}
+          Harbor:      {{ 'https://' + harbor_host if deploy_harbor | default(true) | bool else 'Skipped' }}
+          Nexus:       {{ 'https://' + nexus_host if deploy_nexus | default(true) | bool else 'Skipped' }}
+          Gitea:       {{ 'https://' + gitea_host if deploy_gitea | default(true) | bool else 'Skipped' }}
+          SeaweedFS:   {{ 'https://' + seaweedfs_host if deploy_seaweedfs | default(true) | bool else 'Skipped' }}
+
+          {% if deploy_harbor | default(true) | bool %}
+          Harbor Credentials:
+            Username: admin
+            Password: (from HARBOR_ADMIN_PASSWORD env or default)
+          {% endif %}
+
+          {% if deploy_nexus | default(true) | bool %}
+          Nexus Credentials:
+            Username: admin
+            Password: (from NEXUS_ADMIN_PASSWORD env or default)
+          {% endif %}
+
+          {% if deploy_gitea | default(true) | bool %}
+          Gitea Credentials:
+            Username: {{ gitea_admin_username }}
+            Password: (from GITEA_ADMIN_PASSWORD env or default)
+          {% endif %}
+
+          {% if deploy_seaweedfs | default(true) | bool %}
+          SeaweedFS S3 Credentials:
+            Access Key: (from SEAWEEDFS_ACCESS_KEY env or default)
+            Secret Key: (from SEAWEEDFS_SECRET_KEY env or default)
+          {% endif %}
+
+          =====================================================
+      tags: always

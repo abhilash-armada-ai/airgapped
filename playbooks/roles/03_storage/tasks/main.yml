@@ -1,0 +1,87 @@
+---
+# Local Path Provisioner storage deployment role
+# Simple, lightweight storage for single-node or development clusters
+
+- name: LocalPath | Set variables from storage config
+  ansible.builtin.set_fact:
+    _storage_namespace: "{{ storage.namespace | default(storage_namespace) }}"
+    _storage_class_name: "{{ storage.class_name | default(storage_class_name) }}"
+    _storage_set_default: "{{ storage.set_default | default(storage_set_default) | default(true) }}"
+    _storage_data_path: "{{ storage.data_path | default(storage_data_path) | default('/opt/local-path-provisioner') }}"
+    _storage_deploy_method: "{{ storage.deploy_method | default(storage_deploy_method) | default('manifest') }}"
+
+- name: LocalPath | Create namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ _storage_namespace }}"
+    state: present
+
+# Manifest-based deployment (recommended for simplicity)
+- name: LocalPath | Deploy using manifest
+  when: _storage_deploy_method == "manifest"
+  block:
+    - name: LocalPath | Apply local-path-provisioner manifest
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', 'manifests/local-path-provisioner.yaml.j2') | from_yaml_all | list }}"
+      register: manifest_result
+
+# Helm-based deployment (alternative method)
+- name: LocalPath | Deploy using Helm
+  when: _storage_deploy_method == "helm"
+  block:
+    - name: LocalPath | Deploy using common helm task
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/common/tasks/helm-deploy.yaml"
+      vars:
+        deploy_name: "local-path-provisioner"
+        deploy_repo_name: "containeroo"
+        deploy_namespace: "{{ _storage_namespace }}"
+        deploy_chart_repo: "{{ storage_chart_repo }}"
+        deploy_chart_name: "local-path-provisioner"
+        deploy_chart_version: "{{ storage.chart_version | default(storage_chart_version) }}"
+        deploy_timeout: "5m"
+
+- name: LocalPath | Wait for provisioner deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: local-path-provisioner
+    namespace: "{{ _storage_namespace }}"
+  register: provisioner_deployment
+  until:
+    - provisioner_deployment.resources | length > 0
+    - provisioner_deployment.resources[0].status.readyReplicas | default(0) >= 1
+  retries: 30
+  delay: 5
+
+- name: LocalPath | Set as default StorageClass
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: "{{ _storage_class_name }}"
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "true"
+      provisioner: rancher.io/local-path
+      reclaimPolicy: "{{ storage_reclaim_policy | default('Delete') }}"
+      volumeBindingMode: "{{ storage_volume_binding_mode | default('WaitForFirstConsumer') }}"
+  when: _storage_set_default | bool
+
+- name: LocalPath | Display deployment information
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      Local Path Provisioner deployed successfully!
+      ============================================
+      Namespace: {{ _storage_namespace }}
+      StorageClass: {{ _storage_class_name }}
+      Default: {{ _storage_set_default }}
+      Data Path: {{ _storage_data_path }}
+
+      Note: Volumes are stored directly on nodes at the
+      configured data path. This is suitable for single-node
+      clusters or development environments.
+      ============================================

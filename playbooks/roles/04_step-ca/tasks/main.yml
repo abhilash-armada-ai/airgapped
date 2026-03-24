@@ -1,0 +1,76 @@
+---
+# step-ca deployment role
+# Private ACME CA replacing Let's Encrypt for air-gap environments
+
+- name: step-ca | Install cert-manager (if enabled)
+  ansible.builtin.include_tasks: install-cert-manager.yml
+  when: step_ca_install_cert_manager | bool
+
+- name: step-ca | Deploy with Helm
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/common/tasks/helm-deploy.yaml"
+  vars:
+    deploy_name: step-certificates
+    deploy_repo_name: smallstep
+    deploy_namespace: "{{ step_ca_namespace }}"
+    deploy_chart_repo: "{{ step_ca_chart_repo }}"
+    deploy_chart_name: step-certificates
+    deploy_chart_version: "{{ step_ca_chart_version }}"
+    deploy_timeout: "10m"
+
+- name: step-ca | Wait for deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: step-certificates
+    namespace: "{{ step_ca_namespace }}"
+  register: step_ca_deployment
+  until:
+    - step_ca_deployment.resources | length > 0
+    - step_ca_deployment.resources[0].status.readyReplicas | default(0) >= 1
+  retries: 30
+  delay: 10
+
+- name: step-ca | Get root CA certificate
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: step-certificates-certs
+    namespace: "{{ step_ca_namespace }}"
+  register: ca_secret
+
+- name: step-ca | Extract root CA certificate
+  ansible.builtin.set_fact:
+    step_ca_root_cert: "{{ ca_secret.resources[0].data['root_ca.crt'] | b64decode }}"
+  when: ca_secret.resources | length > 0
+
+- name: step-ca | Create cert-manager ClusterIssuer
+  ansible.builtin.include_tasks: create-cluster-issuer.yml
+  when: step_ca_create_cluster_issuer | bool
+
+- name: step-ca | Display access information
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      step-ca deployed successfully!
+      ============================================
+      ACME URL: https://{{ step_ca_host }}/acme/acme/directory
+      CA URL: https://{{ step_ca_host }}
+
+      cert-manager ClusterIssuer: step-ca-issuer
+
+      To trust this CA on hosts, add the root certificate to:
+        /etc/ssl/certs/airgap-root-ca.crt
+
+      Example cert-manager Certificate:
+        apiVersion: cert-manager.io/v1
+        kind: Certificate
+        metadata:
+          name: my-cert
+        spec:
+          secretName: my-cert-tls
+          issuerRef:
+            name: step-ca-issuer
+            kind: ClusterIssuer
+          dnsNames:
+            - my-app.internal.local
+      ============================================

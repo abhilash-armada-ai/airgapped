@@ -1,0 +1,78 @@
+---
+# Harbor deployment role
+# Deploys Harbor container registry with Helm OCI support
+# Uses common helm-deploy pattern
+
+- name: Harbor | Create namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ harbor_namespace }}"
+    state: present
+
+- name: Harbor | Create TLS secret (if using step-ca)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: harbor-tls
+        namespace: "{{ harbor_namespace }}"
+      spec:
+        secretName: "{{ harbor_tls_secret_name }}"
+        issuerRef:
+          name: step-ca-issuer
+          kind: ClusterIssuer
+        commonName: "{{ harbor_host }}"
+        dnsNames:
+          - "{{ harbor_host }}"
+          - "notary.{{ harbor_host }}"
+  when: harbor_tls_enabled | bool and deploy_step_ca | default(true) | bool
+  failed_when: false  # May fail if cert-manager not ready yet
+
+- name: Harbor | Deploy with Helm
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/common/tasks/helm-deploy.yaml"
+  vars:
+    deploy_name: harbor
+    deploy_repo_name: harbor
+    deploy_namespace: "{{ harbor_namespace }}"
+    deploy_chart_repo: "{{ harbor_chart_repo }}"
+    deploy_chart_name: "{{ harbor_chart_name }}"
+    deploy_chart_version: "{{ harbor_chart_version }}"
+    deploy_timeout: "15m"
+
+- name: Harbor | Wait for core to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: harbor-core
+    namespace: "{{ harbor_namespace }}"
+  register: harbor_core
+  until:
+    - harbor_core.resources | length > 0
+    - harbor_core.resources[0].status.readyReplicas | default(0) >= 1
+  retries: 30
+  delay: 10
+
+- name: Harbor | Configure proxy cache projects
+  ansible.builtin.include_tasks: configure-projects.yml
+  when: harbor_projects is defined
+
+- name: Harbor | Display access information
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      Harbor deployed successfully!
+      ============================================
+      URL: https://{{ harbor_host }}
+      Username: admin
+      Password: {{ harbor_admin_password }}
+
+      Docker login:
+        docker login {{ harbor_host }} -u admin -p {{ harbor_admin_password }}
+
+      Helm OCI login:
+        helm registry login {{ harbor_host }} -u admin -p {{ harbor_admin_password }}
+      ============================================
+  no_log: true

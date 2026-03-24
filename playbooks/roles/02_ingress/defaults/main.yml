@@ -1,0 +1,43 @@
+---
+# nginx-ingress controller role defaults
+# These can be overridden in group_vars/all.yml or inventory
+
+# Namespace for the ingress controller
+ingress_namespace: "ingress-nginx"
+
+# Helm chart configuration
+ingress_chart_repo: "https://kubernetes.github.io/ingress-nginx"
+ingress_chart_name: "ingress-nginx"
+ingress_chart_version: "4.15.0"
+
+# Ingress class configuration
+ingress_class_name: "nginx"
+ingress_class_default: true
+
+# Service type: LoadBalancer or NodePort
+ingress_service_type: "LoadBalancer"
+
+# Replica count for the controller
+ingress_replicas: 1
+
+# NodePort configuration (used when ingress_service_type is NodePort)
+http_node_port: 30080
+https_node_port: 30443
+
+# Resource configuration
+ingress_resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "1000m"
+    memory: "512Mi"
+
+# Enable admission webhooks for validating ingress resources
+ingress_admission_webhooks_enabled: true
+
+# Enable metrics for Prometheus scraping
+ingress_metrics_enabled: true
+
+# Timeout for Helm deployment
+ingress_deploy_timeout: "10m"

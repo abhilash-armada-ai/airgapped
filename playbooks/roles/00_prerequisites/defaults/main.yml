@@ -1,0 +1,9 @@
+---
+# Prerequisites role defaults
+# Configures expected environment requirements
+
+# Storage class that should exist on the cluster
+storage_class: "local-path"
+
+# Ingress class that should exist on the cluster
+ingress_class_name: "nginx"

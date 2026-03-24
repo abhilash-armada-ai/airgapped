@@ -1,0 +1,50 @@
+---
+# Common Helm deployment task
+# Reusable task for deploying Helm charts with consistent patterns
+#
+# Required variables:
+#   - deploy_name: Release name
+#   - deploy_namespace: Target namespace
+#   - deploy_chart_repo: Helm repository URL
+#   - deploy_chart_name: Chart name in repository
+#   - deploy_chart_version: Chart version
+#
+# Optional variables:
+#   - deploy_repo_name: Helm repo name (default: deploy_name)
+#   - deploy_wait: Wait for deployment (default: true)
+#   - deploy_timeout: Timeout for wait (default: 10m)
+#   - deploy_create_namespace: Create namespace if missing (default: true)
+#
+# Values file: role_path/templates/charts/<deploy_chart_name>/values.yaml.j2
+
+- name: "{{ deploy_name }} | Add Helm repository"
+  kubernetes.core.helm_repository:
+    name: "{{ deploy_repo_name | default(deploy_name) }}"
+    repo_url: "{{ deploy_chart_repo }}"
+  when: deploy_chart_repo is defined and deploy_chart_repo | length > 0
+
+- name: "{{ deploy_name }} | Create namespace"
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ deploy_namespace }}"
+    state: present
+  when: deploy_create_namespace | default(true) | bool
+
+- name: "{{ deploy_name }} | Deploy Helm chart"
+  kubernetes.core.helm:
+    name: "{{ deploy_name }}"
+    namespace: "{{ deploy_namespace }}"
+    chart_ref: "{{ deploy_repo_name | default(deploy_name) }}/{{ deploy_chart_name }}"
+    chart_version: "{{ deploy_chart_version }}"
+    values: "{{ lookup('ansible.builtin.template', role_path + '/templates/charts/' + deploy_chart_name + '/values.yaml.j2') | from_yaml }}"
+    wait: "{{ deploy_wait | default(true) | bool }}"
+    timeout: "{{ deploy_timeout | default('10m') }}"
+    create_namespace: "{{ deploy_create_namespace | default(true) | bool }}"
+    state: present
+  register: helm_deploy_result
+
+- name: "{{ deploy_name }} | Display deployment status"
+  ansible.builtin.debug:
+    msg: "{{ deploy_name }} deployed successfully in namespace {{ deploy_namespace }}"
+  when: helm_deploy_result is changed

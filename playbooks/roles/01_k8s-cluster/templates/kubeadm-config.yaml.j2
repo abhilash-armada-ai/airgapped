@@ -1,0 +1,41 @@
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ ansible_default_ipv4.address }}
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+  taints:
+    - effect: NoSchedule
+      key: node-role.kubernetes.io/control-plane
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+kubernetesVersion: v{{ k8s_version }}
+controlPlaneEndpoint: "{{ actual_control_plane_endpoint }}:6443"
+networking:
+  podSubnet: {{ pod_cidr }}
+  serviceSubnet: {{ service_cidr }}
+apiServer:
+  extraArgs:
+    authorization-mode: Node,RBAC
+  certSANs:
+    - "{{ actual_control_plane_endpoint }}"
+    - "{{ ansible_default_ipv4.address }}"
+    - "{{ ansible_hostname }}"
+    - "localhost"
+    - "127.0.0.1"
+controllerManager:
+  extraArgs:
+    bind-address: 0.0.0.0
+scheduler:
+  extraArgs:
+    bind-address: 0.0.0.0
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd

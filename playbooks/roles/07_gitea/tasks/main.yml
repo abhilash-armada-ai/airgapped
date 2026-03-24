@@ -1,0 +1,75 @@
+---
+# Gitea deployment role
+# Lightweight Git server for mirroring external repositories
+
+- name: Gitea | Create namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ gitea_namespace }}"
+    state: present
+
+- name: Gitea | Create TLS certificate (if using step-ca)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: gitea-tls
+        namespace: "{{ gitea_namespace }}"
+      spec:
+        secretName: "{{ gitea_tls_secret_name }}"
+        issuerRef:
+          name: step-ca-issuer
+          kind: ClusterIssuer
+        commonName: "{{ gitea_host }}"
+        dnsNames:
+          - "{{ gitea_host }}"
+  when: gitea_tls_enabled | bool and deploy_step_ca | default(true) | bool
+  failed_when: false
+
+- name: Gitea | Deploy with Helm
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/common/tasks/helm-deploy.yaml"
+  vars:
+    deploy_name: gitea
+    deploy_repo_name: gitea
+    deploy_namespace: "{{ gitea_namespace }}"
+    deploy_chart_repo: "{{ gitea_chart_repo }}"
+    deploy_chart_name: gitea
+    deploy_chart_version: "{{ gitea_chart_version }}"
+    deploy_timeout: "15m"
+
+- name: Gitea | Wait for deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: gitea
+    namespace: "{{ gitea_namespace }}"
+  register: gitea_sts
+  until:
+    - gitea_sts.resources | length > 0
+    - gitea_sts.resources[0].status.readyReplicas | default(0) >= 1
+  retries: 30
+  delay: 10
+
+- name: Gitea | Configure mirror repositories
+  ansible.builtin.include_tasks: configure-mirrors.yml
+  when: gitea_mirror_repos is defined
+
+- name: Gitea | Display access information
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      Gitea deployed successfully!
+      ============================================
+      URL: https://{{ gitea_host }}
+      Username: {{ gitea_admin_username }}
+      Password: (set via GITEA_ADMIN_PASSWORD env)
+
+      Clone example:
+        git clone https://{{ gitea_host }}/amcop/catalog.git
+
+      SSH clone (if enabled):
+        git clone git@{{ gitea_host }}:amcop/catalog.git
+      ============================================

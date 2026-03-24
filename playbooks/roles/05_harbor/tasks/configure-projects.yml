@@ -1,0 +1,100 @@
+---
+# Configure Harbor projects for proxy cache and local storage
+# This uses the Harbor API to create projects after deployment
+
+- name: Harbor | Wait for API to be ready
+  ansible.builtin.uri:
+    url: "https://{{ harbor_host }}/api/v2.0/health"
+    method: GET
+    validate_certs: false
+  register: harbor_health
+  until: harbor_health.status == 200
+  retries: 30
+  delay: 10
+
+# Map registry URLs to Harbor registry types
+# Docker Hub requires special type "docker-hub", others use "docker-registry"
+- name: Harbor | Create registry endpoints for proxy cache
+  ansible.builtin.uri:
+    url: "https://{{ harbor_host }}/api/v2.0/registries"
+    method: POST
+    user: admin
+    password: "{{ harbor_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      name: "{{ item.name }}-upstream"
+      type: "{{ 'docker-hub' if 'docker.io' in item.registry_url or 'registry-1.docker.io' in item.registry_url else 'docker-registry' }}"
+      url: "{{ item.registry_url }}"
+      insecure: false
+    status_code: [201, 409]  # 409 = already exists
+  loop: "{{ harbor_projects | selectattr('type', 'equalto', 'proxy') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: registry_results
+  no_log: true
+
+- name: Harbor | Get registry IDs for proxy projects
+  ansible.builtin.uri:
+    url: "https://{{ harbor_host }}/api/v2.0/registries?name={{ item.name }}-upstream"
+    method: GET
+    user: admin
+    password: "{{ harbor_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  loop: "{{ harbor_projects | selectattr('type', 'equalto', 'proxy') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: registry_ids
+  no_log: true
+
+- name: Harbor | Create proxy cache projects
+  ansible.builtin.uri:
+    url: "https://{{ harbor_host }}/api/v2.0/projects"
+    method: POST
+    user: admin
+    password: "{{ harbor_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      project_name: "{{ item.item.name }}"
+      registry_id: "{{ (item.json | first).id }}"
+      public: true
+      metadata:
+        auto_scan: "false"
+    status_code: [201, 409]
+  loop: "{{ registry_ids.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: item.json | length > 0
+  no_log: true
+
+- name: Harbor | Create local projects
+  ansible.builtin.uri:
+    url: "https://{{ harbor_host }}/api/v2.0/projects"
+    method: POST
+    user: admin
+    password: "{{ harbor_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      project_name: "{{ item.name }}"
+      public: true
+      metadata:
+        auto_scan: "{{ 'true' if harbor_trivy_enabled | default(true) else 'false' }}"
+    status_code: [201, 409]
+  loop: "{{ harbor_projects | selectattr('type', 'equalto', 'local') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Harbor | Display configured projects
+  ansible.builtin.debug:
+    msg: |
+      Harbor projects configured:
+      {% for project in harbor_projects %}
+        - {{ project.name }} ({{ project.type }})
+      {% endfor %}

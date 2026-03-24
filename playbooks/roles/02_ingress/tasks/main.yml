@@ -1,0 +1,71 @@
+---
+# nginx-ingress controller deployment role
+# Uses common helm-deploy task with template lookup
+
+- name: Ingress | Set deployment variables
+  ansible.builtin.set_fact:
+    _ingress_namespace: "{{ ingress.namespace | default(ingress_namespace) }}"
+    _ingress_service_type: "{{ ingress.service_type | default(ingress_service_type) }}"
+    _ingress_class_name: "{{ ingress.class_name | default(ingress_class_name) }}"
+    _ingress_replicas: "{{ ingress.replicas | default(ingress_replicas) }}"
+    _ingress_chart_version: "{{ ingress.chart_version | default(ingress_chart_version) }}"
+
+- name: Ingress | Deploy using common helm task
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/common/tasks/helm-deploy.yaml"
+  vars:
+    deploy_name: "ingress-nginx"
+    deploy_repo_name: "ingress-nginx"
+    deploy_namespace: "{{ _ingress_namespace }}"
+    deploy_chart_repo: "{{ ingress_chart_repo }}"
+    deploy_chart_name: "ingress-nginx"
+    deploy_chart_version: "{{ _ingress_chart_version }}"
+    deploy_timeout: "{{ ingress_deploy_timeout | default('10m') }}"
+    deploy_values_template: true
+
+- name: Ingress | Wait for controller deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: ingress-nginx-controller
+    namespace: "{{ _ingress_namespace }}"
+  register: ingress_controller
+  until:
+    - ingress_controller.resources | length > 0
+    - ingress_controller.resources[0].status.readyReplicas | default(0) >= 1
+  retries: 30
+  delay: 10
+
+- name: Ingress | Get service information
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    name: ingress-nginx-controller
+    namespace: "{{ _ingress_namespace }}"
+  register: ingress_service
+
+- name: Ingress | Set external IP fact (LoadBalancer)
+  ansible.builtin.set_fact:
+    ingress_external_ip: "{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip | default(ingress_service.resources[0].status.loadBalancer.ingress[0].hostname | default('pending')) }}"
+  when:
+    - _ingress_service_type == "LoadBalancer"
+    - ingress_service.resources | length > 0
+    - ingress_service.resources[0].status.loadBalancer.ingress is defined
+    - ingress_service.resources[0].status.loadBalancer.ingress | length > 0
+
+- name: Ingress | Display access information
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      nginx-ingress Controller deployed successfully!
+      ============================================
+      Namespace: {{ _ingress_namespace }}
+      Ingress Class: {{ _ingress_class_name }}
+      Service Type: {{ _ingress_service_type }}
+      {% if _ingress_service_type == 'LoadBalancer' %}
+      External IP: {{ ingress_external_ip | default('pending') }}
+      {% else %}
+      NodePorts:
+        HTTP:  {{ ingress.http_node_port | default(http_node_port) }}
+        HTTPS: {{ ingress.https_node_port | default(https_node_port) }}
+      {% endif %}
+      ============================================

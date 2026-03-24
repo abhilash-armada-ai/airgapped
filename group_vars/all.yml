@@ -1,0 +1,307 @@
+---
+# Air-Gap Infrastructure Configuration
+# =====================================
+# Customize these values for your environment
+
+# ========================================
+# DOMAIN & NETWORK CONFIGURATION
+# ========================================
+# These settings define how services are accessed
+
+# Base domain for all services (e.g., "example.com", "airgap.local")
+domain_suffix: "internal.local"
+
+# DNS configuration - how hostnames are constructed
+# Services will be accessible at: <service>.{{ domain_suffix }}
+# Example: harbor.internal.local, nexus.internal.local
+dns:
+  # IP address for the ingress controller (for DNS A records or /etc/hosts)
+  ingress_ip: ""  # Leave empty to auto-detect from LoadBalancer
+
+  # If using external DNS, set to true
+  external_dns_enabled: false
+
+  # For manual /etc/hosts entries, set this list
+  # Will be used by cluster nodes to resolve internal services
+  hosts_entries: []
+  #   - ip: "192.168.1.100"
+  #     hostnames:
+  #       - "harbor.internal.local"
+  #       - "nexus.internal.local"
+
+# TLS configuration
+tls:
+  enabled: true
+  # Use step-ca for internal certificates (recommended)
+  use_step_ca: true
+  # Or provide your own wildcard certificate
+  custom_cert_secret: ""  # Name of existing TLS secret with wildcard cert
+
+# ========================================
+# KUBERNETES CLUSTER CONFIGURATION
+# ========================================
+# Settings for kubeadm-based cluster installation
+
+k8s_cluster:
+  # Enable cluster installation (set false if cluster exists)
+  install: true
+
+  # Kubernetes version
+  version: "1.31.0"
+
+  # Pod network CIDR (must not overlap with node network)
+  pod_cidr: "10.244.0.0/16"
+
+  # Service CIDR
+  service_cidr: "10.96.0.0/12"
+
+  # Container runtime
+  container_runtime: "containerd"
+
+  # Control plane endpoint (for HA setups, use load balancer VIP)
+  # For single master, leave empty to use first master's IP
+  control_plane_endpoint: ""
+
+  # Node configuration - define your cluster nodes
+  masters:
+    - hostname: "master-1"
+      ip: "192.168.1.10"
+      # Additional masters for HA (optional)
+      # - hostname: "master-2"
+      #   ip: "192.168.1.11"
+
+  workers:
+    - hostname: "worker-1"
+      ip: "192.168.1.20"
+    - hostname: "worker-2"
+      ip: "192.168.1.21"
+    # Add more workers as needed
+
+  # SSH configuration for node access
+  ssh:
+    user: "ubuntu"
+    private_key_path: "~/.ssh/id_rsa"
+    become: true
+
+# ========================================
+# INGRESS CONTROLLER CONFIGURATION
+# ========================================
+# nginx-ingress for routing external traffic
+
+ingress:
+  # Deploy nginx-ingress controller
+  deploy: true
+  namespace: "ingress-nginx"
+
+  # Service type for the ingress controller
+  # - LoadBalancer: For cloud or MetalLB environments
+  # - NodePort: For bare-metal without LB
+  service_type: "LoadBalancer"
+
+  # If using NodePort, specify the ports
+  http_node_port: 30080
+  https_node_port: 30443
+
+  # Ingress class name (used by all services)
+  class_name: "nginx"
+
+  # Chart configuration
+  chart_version: "4.12.0"
+
+  # Resource limits
+  replicas: 1
+
+  # Default annotations applied to all ingresses
+  default_annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+
+# ========================================
+# STORAGE CONFIGURATION (LOCAL-PATH-PROVISIONER)
+# ========================================
+# Simple local storage provisioner for single-node/development clusters
+
+storage:
+  # Deploy local-path-provisioner
+  deploy: true
+  namespace: "local-path-storage"
+
+  # Default storage class name
+  class_name: "local-path"
+
+  # Make local-path the default storage class
+  set_default: true
+
+  # Deployment method: "manifest" (recommended) or "helm"
+  deploy_method: "manifest"
+
+  # Data path on nodes for storing volume data
+  data_path: "/opt/local-path-provisioner"
+
+  # Manifest version (when using manifest deployment)
+  manifest_version: "v0.0.30"
+
+  # For air-gap: specify internal registry images
+  # image: "harbor.internal.local/dockerhub-proxy/rancher/local-path-provisioner"
+  # image_tag: "v0.0.30"
+  # helper_image: "harbor.internal.local/dockerhub-proxy/busybox"
+  # helper_image_tag: "stable"
+
+# ========================================
+# COMPONENT DEPLOYMENT TOGGLES
+# ========================================
+# Enable/disable individual components
+
+deploy_k8s_cluster: "{{ k8s_cluster.install | default(true) }}"
+deploy_ingress: "{{ ingress.deploy | default(true) }}"
+deploy_storage: "{{ storage.deploy | default(true) }}"
+deploy_harbor: true
+deploy_nexus: true
+deploy_gitea: true
+deploy_step_ca: true
+deploy_seaweedfs: true
+
+# Backward compatibility - use new nested values
+storage_class: "{{ storage.class_name | default('local-path') }}"
+ingress_class_name: "{{ ingress.class_name | default('nginx') }}"
+enable_tls: "{{ tls.enabled | default(true) }}"
+
+# ========================================
+# HARBOR CONFIGURATION
+# Container Registry + Helm OCI Registry
+# ========================================
+harbor_namespace: "harbor"
+harbor_host: "harbor.{{ domain_suffix }}"
+harbor_chart_version: "1.16.0"
+harbor_admin_password: "{{ lookup('env', 'HARBOR_ADMIN_PASSWORD') | default('Harbor12345', true) }}"
+harbor_storage_size: "50Gi"
+harbor_registry_storage_size: "500Gi"
+
+# Harbor projects to create for mirroring
+harbor_projects:
+  - name: "dockerhub-proxy"
+    type: "proxy"
+    registry_url: "https://registry-1.docker.io"
+  - name: "quay-proxy"
+    type: "proxy"
+    registry_url: "https://quay.io"
+  - name: "k8s-proxy"
+    type: "proxy"
+    registry_url: "https://registry.k8s.io"
+  - name: "ghcr-proxy"
+    type: "proxy"
+    registry_url: "https://ghcr.io"
+  - name: "nvcr-proxy"
+    type: "proxy"
+    registry_url: "https://nvcr.io"
+  - name: "helm"
+    type: "local"
+    description: "Internal Helm charts"
+  - name: "amcop"
+    type: "local"
+    description: "AMCOP container images"
+
+# ========================================
+# NEXUS CONFIGURATION
+# Artifacts + APT + PyPI Proxy
+# ========================================
+nexus_namespace: "nexus"
+nexus_host: "nexus.{{ domain_suffix }}"
+nexus_chart_version: "64.2.0"
+nexus_admin_password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') | default('admin123', true) }}"
+nexus_storage_size: "100Gi"
+
+# Nexus repositories to configure
+nexus_repositories:
+  # Raw hosted for binary artifacts
+  - name: "raw-hosted"
+    type: "raw-hosted"
+    description: "Binary artifacts (drivers, binaries)"
+
+  # APT proxy repositories
+  - name: "ubuntu-archive"
+    type: "apt-proxy"
+    remote_url: "http://archive.ubuntu.com/ubuntu"
+  - name: "ubuntu-security"
+    type: "apt-proxy"
+    remote_url: "http://security.ubuntu.com/ubuntu"
+  - name: "amd-radeon"
+    type: "apt-proxy"
+    remote_url: "https://repo.radeon.com/amdgpu"
+  - name: "kubernetes"
+    type: "apt-proxy"
+    remote_url: "https://pkgs.k8s.io/core:/stable:/v1.31/deb"
+  - name: "nodesource"
+    type: "apt-proxy"
+    remote_url: "https://deb.nodesource.com/node_20.x"
+
+  # PyPI proxy
+  - name: "pypi-proxy"
+    type: "pypi-proxy"
+    remote_url: "https://pypi.org"
+
+# ========================================
+# GITEA CONFIGURATION
+# Internal Git Server
+# ========================================
+gitea_namespace: "gitea"
+gitea_host: "gitea.{{ domain_suffix }}"
+gitea_chart_version: "12.5.0"
+gitea_admin_username: "gitea_admin"
+gitea_admin_password: "{{ lookup('env', 'GITEA_ADMIN_PASSWORD') | default('Gitea12345', true) }}"
+gitea_admin_email: "admin@{{ domain_suffix }}"
+gitea_storage_size: "20Gi"
+
+# Repositories to mirror from external sources
+gitea_mirror_repos:
+  - name: "catalog"
+    source: "https://gitlab.com/aarnanetworks/catalog.git"
+    org: "amcop"
+  - name: "exa-csi-driver"
+    source: "https://github.com/DDNStorage/exa-csi-driver.git"
+    org: "mirrors"
+  - name: "bridge-kubeflow"
+    source: "https://github.com/armadasystems/bridge-kubeflow.git"
+    org: "mirrors"
+  - name: "local-path-provisioner"
+    source: "https://github.com/rancher/local-path-provisioner.git"
+    org: "mirrors"
+
+# ========================================
+# STEP-CA CONFIGURATION
+# Private ACME CA
+# ========================================
+step_ca_namespace: "step-ca"
+step_ca_host: "ca.{{ domain_suffix }}"
+step_ca_chart_version: "1.29.0"
+step_ca_provisioner_name: "acme"
+step_ca_provisioner_password: "{{ lookup('env', 'STEP_CA_PASSWORD') | default('StepCA12345', true) }}"
+step_ca_storage_size: "5Gi"
+
+# Root CA configuration
+step_ca_root_cn: "{{ domain_suffix }} Root CA"
+step_ca_intermediate_cn: "{{ domain_suffix }} Intermediate CA"
+step_ca_validity_duration: "8760h"  # 1 year
+
+# ========================================
+# SEAWEEDFS CONFIGURATION
+# S3-Compatible Object Storage
+# ========================================
+seaweedfs_namespace: "seaweedfs"
+seaweedfs_host: "s3.{{ domain_suffix }}"
+seaweedfs_chart_version: "4.17.0"
+seaweedfs_access_key: "{{ lookup('env', 'SEAWEEDFS_ACCESS_KEY') | default('minioadmin', true) }}"
+seaweedfs_secret_key: "{{ lookup('env', 'SEAWEEDFS_SECRET_KEY') | default('minioadmin', true) }}"
+seaweedfs_master_storage_size: "10Gi"
+seaweedfs_volume_storage_size: "100Gi"
+seaweedfs_filer_storage_size: "10Gi"
+
+# S3 buckets to create
+seaweedfs_buckets:
+  - name: "huggingface-models"
+    description: "Pre-downloaded HuggingFace model weights"
+  - name: "datasets"
+    description: "Pre-downloaded datasets"
+  - name: "artifacts"
+    description: "General artifact storage"

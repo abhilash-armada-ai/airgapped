@@ -1,0 +1,218 @@
+---
+# Configure Nexus repositories via REST API
+# Creates raw, APT proxy, and PyPI proxy repositories
+#
+# NOTE: Nexus 3.x generates a random initial admin password stored in
+# /nexus-data/admin.password. This task reads that password first.
+
+- name: Nexus | Wait for API to be ready
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/status"
+    method: GET
+    validate_certs: false
+  register: nexus_health
+  until: nexus_health.status == 200
+  retries: 30
+  delay: 10
+
+# Read the generated initial admin password from the Nexus pod
+- name: Nexus | Get initial admin password from pod
+  kubernetes.core.k8s_exec:
+    namespace: "{{ nexus_namespace }}"
+    pod: "{{ nexus_pod_name | default('nexus-0') }}"
+    container: nexus
+    command: cat /nexus-data/admin.password
+  register: nexus_initial_password
+  failed_when: false
+  changed_when: false
+  no_log: true
+
+- name: Nexus | Get Nexus pod name
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ nexus_namespace }}"
+    label_selectors:
+      - app=nexus
+  register: nexus_pods
+
+- name: Nexus | Set pod name fact
+  ansible.builtin.set_fact:
+    _nexus_pod_name: "{{ nexus_pods.resources[0].metadata.name }}"
+  when: nexus_pods.resources | length > 0
+
+- name: Nexus | Read initial password from pod
+  kubernetes.core.k8s_exec:
+    namespace: "{{ nexus_namespace }}"
+    pod: "{{ _nexus_pod_name }}"
+    command: cat /nexus-data/admin.password
+  register: nexus_initial_pw_result
+  failed_when: false
+  changed_when: false
+  no_log: true
+  when: _nexus_pod_name is defined
+
+- name: Nexus | Set initial password fact
+  ansible.builtin.set_fact:
+    _nexus_initial_password: "{{ nexus_initial_pw_result.stdout | default('') | trim }}"
+  when: nexus_initial_pw_result.stdout is defined and nexus_initial_pw_result.stdout | length > 0
+  no_log: true
+
+# Try to change password using the generated initial password
+- name: Nexus | Change admin password (using initial generated password)
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/security/users/admin/change-password"
+    method: PUT
+    user: admin
+    password: "{{ _nexus_initial_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body: "{{ nexus_admin_password }}"
+    headers:
+      Content-Type: "text/plain"
+    status_code: [204]
+  register: password_change_initial
+  failed_when: false
+  no_log: true
+  when: _nexus_initial_password is defined and _nexus_initial_password | length > 0
+
+# If initial password didn't work, try with the configured password (already changed)
+- name: Nexus | Verify admin password works
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/status"
+    method: GET
+    user: admin
+    password: "{{ nexus_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  register: password_verify
+  failed_when: false
+  no_log: true
+
+- name: Nexus | Remove initial password file after change
+  kubernetes.core.k8s_exec:
+    namespace: "{{ nexus_namespace }}"
+    pod: "{{ _nexus_pod_name }}"
+    command: rm -f /nexus-data/admin.password
+  when:
+    - _nexus_pod_name is defined
+    - password_change_initial is defined
+    - password_change_initial.status | default(0) == 204
+  failed_when: false
+  changed_when: false
+
+- name: Nexus | Enable anonymous access for reads
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/security/anonymous"
+    method: PUT
+    user: admin
+    password: "{{ nexus_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      enabled: true
+      userId: "anonymous"
+      realmName: "NexusAuthorizingRealm"
+    status_code: [200, 204]
+  no_log: true
+
+# Create raw hosted repository
+- name: Nexus | Create raw hosted repository
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/repositories/raw/hosted"
+    method: POST
+    user: admin
+    password: "{{ nexus_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      name: "{{ item.name }}"
+      online: true
+      storage:
+        blobStoreName: "default"
+        strictContentTypeValidation: false
+        writePolicy: "ALLOW"
+      cleanup: null
+    status_code: [201, 400]  # 400 = already exists
+  loop: "{{ nexus_repositories | selectattr('type', 'equalto', 'raw-hosted') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+# Create APT proxy repositories
+- name: Nexus | Create APT proxy repositories
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/repositories/apt/proxy"
+    method: POST
+    user: admin
+    password: "{{ nexus_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      name: "{{ item.name }}"
+      online: true
+      storage:
+        blobStoreName: "default"
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "{{ item.remote_url }}"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+      apt:
+        distribution: "{{ item.distribution | default('jammy') }}"
+        flat: "{{ item.flat | default(false) }}"
+    status_code: [201, 400]
+  loop: "{{ nexus_repositories | selectattr('type', 'equalto', 'apt-proxy') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+# Create PyPI proxy repository
+- name: Nexus | Create PyPI proxy repository
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/repositories/pypi/proxy"
+    method: POST
+    user: admin
+    password: "{{ nexus_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      name: "{{ item.name }}"
+      online: true
+      storage:
+        blobStoreName: "default"
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "{{ item.remote_url }}"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+    status_code: [201, 400]
+  loop: "{{ nexus_repositories | selectattr('type', 'equalto', 'pypi-proxy') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Nexus | Display configured repositories
+  ansible.builtin.debug:
+    msg: |
+      Nexus repositories configured:
+      {% for repo in nexus_repositories %}
+        - {{ repo.name }} ({{ repo.type }})
+      {% endfor %}

@@ -1,0 +1,34 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nexus
+  namespace: {{ nexus_namespace }}
+  labels:
+    app: nexus
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+{% if nexus_tls_enabled | bool %}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+{% endif %}
+spec:
+  ingressClassName: {{ nexus_ingress_class }}
+  rules:
+    - host: {{ nexus_host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nexus
+                port:
+                  number: {{ nexus_service_port }}
+{% if nexus_tls_enabled | bool %}
+  tls:
+    - hosts:
+        - {{ nexus_host }}
+      secretName: {{ nexus_tls_secret_name }}
+{% endif %}

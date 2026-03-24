@@ -1,0 +1,76 @@
+---
+# Prerequisites role - ensures required tools are installed
+# Verifies: kubectl, helm, and K8s cluster connectivity
+
+- name: Check if kubectl is installed
+  ansible.builtin.command: which kubectl
+  register: kubectl_check
+  changed_when: false
+  failed_when: false
+
+- name: Check if helm is installed
+  ansible.builtin.command: which helm
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if kubectl is not installed
+  ansible.builtin.fail:
+    msg: "kubectl is not installed. Please install kubectl first."
+  when: kubectl_check.rc != 0
+
+- name: Fail if helm is not installed
+  ansible.builtin.fail:
+    msg: "Helm is not installed. Please install Helm first."
+  when: helm_check.rc != 0
+
+- name: Get kubectl version
+  ansible.builtin.command: kubectl version --client -o json
+  register: kubectl_version
+  changed_when: false
+
+- name: Get helm version
+  ansible.builtin.command: helm version --short
+  register: helm_version
+  changed_when: false
+
+- name: Display tool versions
+  ansible.builtin.debug:
+    msg: |
+      kubectl: {{ (kubectl_version.stdout | from_json).clientVersion.gitVersion }}
+      helm: {{ helm_version.stdout }}
+
+- name: Verify cluster connectivity
+  kubernetes.core.k8s_cluster_info:
+  register: cluster_info
+
+- name: Display cluster info
+  ansible.builtin.debug:
+    msg: |
+      Kubernetes Version: {{ cluster_info.version.server.kubernetes.gitVersion }}
+      API Server: {{ cluster_info.connection.host }}
+
+- name: Check if storage class exists
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+    name: "{{ storage_class }}"
+  register: sc_check
+
+- name: Warn if storage class does not exist
+  ansible.builtin.debug:
+    msg: "WARNING: StorageClass '{{ storage_class }}' does not exist. Deployments may fail."
+  when: sc_check.resources | length == 0
+
+- name: Check if ingress controller is installed
+  kubernetes.core.k8s_info:
+    api_version: networking.k8s.io/v1
+    kind: IngressClass
+    name: "{{ ingress_class_name }}"
+  register: ingress_check
+  failed_when: false
+
+- name: Warn if ingress class does not exist
+  ansible.builtin.debug:
+    msg: "WARNING: IngressClass '{{ ingress_class_name }}' not found. Ingress resources may not work."
+  when: ingress_check.resources | length == 0

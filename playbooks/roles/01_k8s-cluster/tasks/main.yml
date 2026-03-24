@@ -1,0 +1,75 @@
+---
+# Kubernetes cluster installation with kubeadm
+# This role runs on ALL cluster nodes (masters and workers)
+
+- name: K8s Cluster | Gather node facts
+  ansible.builtin.setup:
+    gather_subset:
+      - network
+      - hardware
+
+- name: K8s Cluster | Check if cluster already exists
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: k8s_admin_conf
+
+- name: K8s Cluster | Display cluster status
+  ansible.builtin.debug:
+    msg: "{{ 'Kubernetes cluster already initialized' if k8s_admin_conf.stat.exists else 'Kubernetes cluster not found, proceeding with installation' }}"
+
+# ==================================================
+# Prerequisites (all nodes)
+# ==================================================
+- name: K8s Cluster | Install prerequisites on all nodes
+  ansible.builtin.include_tasks: prerequisites.yml
+  when: not k8s_admin_conf.stat.exists
+
+# ==================================================
+# Install container runtime (all nodes)
+# ==================================================
+- name: K8s Cluster | Install containerd
+  ansible.builtin.include_tasks: containerd.yml
+  when: not k8s_admin_conf.stat.exists
+
+# ==================================================
+# Install Kubernetes packages (all nodes)
+# ==================================================
+- name: K8s Cluster | Install Kubernetes packages
+  ansible.builtin.include_tasks: k8s-packages.yml
+  when: not k8s_admin_conf.stat.exists
+
+# ==================================================
+# Initialize control plane (first master only)
+# ==================================================
+- name: K8s Cluster | Initialize control plane
+  ansible.builtin.include_tasks: init-master.yml
+  when:
+    - not k8s_admin_conf.stat.exists
+    - inventory_hostname == groups['masters'][0]
+
+# ==================================================
+# Join additional masters (HA setup)
+# ==================================================
+- name: K8s Cluster | Join additional masters
+  ansible.builtin.include_tasks: join-master.yml
+  when:
+    - not k8s_admin_conf.stat.exists
+    - inventory_hostname in groups['masters']
+    - inventory_hostname != groups['masters'][0]
+
+# ==================================================
+# Join worker nodes
+# ==================================================
+- name: K8s Cluster | Join worker nodes
+  ansible.builtin.include_tasks: join-worker.yml
+  when:
+    - not k8s_admin_conf.stat.exists
+    - inventory_hostname in groups['workers']
+
+# ==================================================
+# Post-installation (first master)
+# ==================================================
+- name: K8s Cluster | Post-installation tasks
+  ansible.builtin.include_tasks: post-install.yml
+  when:
+    - inventory_hostname == groups['masters'][0]
