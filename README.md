@@ -95,22 +95,49 @@ Get the ingress IP after deployment:
 kubectl get svc -n ingress-nginx
 ```
 
-## Deployment Workflow
+## Docker Workflow
 
 ### Step 1 — Configure
 
 Edit `group_vars/all.yml` with your node IPs, domain, and credentials.
 
-### Step 2 — (Optional) Seed registries
+### Step 2 — Build the image
+
+```bash
+./build.sh
+
+# Custom name/tag
+IMAGE_NAME=air-gap IMAGE_TAG=v1.0 ./build.sh
+
+# Different platform
+PLATFORM=linux/arm64 ./build.sh
+```
+
+### Step 3 — (Optional) Seed registries
 
 Run this from an **internet-connected** machine before the main deployment. It mirrors container images, Helm charts, and binary artifacts into Harbor and Nexus so cluster nodes never need internet access:
 
 ```bash
-ansible-playbook playbooks/seed.yml \
-  -e "harbor_host=harbor.internal.local"
+docker run -it --rm \
+  -v $(pwd)/group_vars/all.yml:/airgapped/group_vars/all.yml \
+  air-gap
+
+# Inside the container:
+ansible-playbook playbooks/seed.yml -e "harbor_host=harbor.internal.local"
 ```
 
-### Step 3 — Deploy
+### Step 4 — Run the container
+
+```bash
+docker run -it --rm \
+  -v ~/.ssh/id_rsa:/root/.ssh/id_rsa:ro \
+  -v $(pwd)/group_vars/all.yml:/airgapped/group_vars/all.yml \
+  -v ~/.kube/config:/root/.kube/config:ro \
+  -e HARBOR_ADMIN_PASSWORD=secret \
+  air-gap
+```
+
+### Step 5 — Deploy (inside the container)
 
 ```bash
 # Full deployment (K8s cluster + all services)
@@ -126,14 +153,16 @@ ansible-playbook -i inventory/hosts.yml playbooks/site.yml --tags harbor,nexus
 ansible-playbook -i inventory/hosts.yml playbooks/site.yml --check
 ```
 
-### Step 4 — Kubeconfig on bastion
+### Step 6 — Kubeconfig (if deploying K8s cluster)
 
-The bastion must have a valid kubeconfig before the service deployment plays run. After the K8s cluster play completes, copy it from the master:
+After the K8s cluster play completes, copy kubeconfig from the master and re-mount it on the next run:
 
 ```bash
-mkdir -p ~/.kube
+# From outside the container
 scp ubuntu@<master-ip>:/etc/kubernetes/admin.conf ~/.kube/config
-kubectl cluster-info   # verify connectivity
+
+# Re-run container with kubeconfig mounted, then deploy services
+ansible-playbook -i inventory/hosts.yml playbooks/site.yml --skip-tags k8s-cluster
 ```
 
 ### Service URLs (default domain)
@@ -145,33 +174,6 @@ kubectl cluster-info   # verify connectivity
 | Gitea | `https://gitea.internal.local` | `gitea_admin` / `$GITEA_ADMIN_PASSWORD` |
 | step-ca | `https://ca.internal.local` | — |
 | SeaweedFS S3 | `https://s3.internal.local` | `$SEAWEEDFS_ACCESS_KEY` / `$SEAWEEDFS_SECRET_KEY` |
-
-## Docker Workflow
-
-```bash
-# Build the image
-./build.sh
-
-# Run (validates environment, drops into shell at /airgapped)
-docker run -it --rm \
-  -v ~/.ssh/id_rsa:/root/.ssh/id_rsa:ro \
-  -v $(pwd)/group_vars/all.yml:/airgapped/group_vars/all.yml \
-  -v ~/.kube/config:/root/.kube/config:ro \
-  -e HARBOR_ADMIN_PASSWORD=secret \
-  air-gap
-
-# Then run playbooks from inside the container
-ansible-playbook -i inventory/hosts.yml playbooks/site.yml
-ansible-playbook -i inventory/hosts.yml playbooks/site.yml --skip-tags k8s-cluster
-ansible-playbook -i inventory/hosts.yml playbooks/site.yml --tags harbor,nexus
-```
-
-Custom image name or tag:
-
-```bash
-IMAGE_NAME=air-gap IMAGE_TAG=v1.0 ./build.sh
-PLATFORM=linux/arm64 ./build.sh
-```
 
 ## Available Tags
 
