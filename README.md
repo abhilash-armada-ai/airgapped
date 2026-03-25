@@ -196,7 +196,17 @@ ansible-playbook -i inventory/hosts.yml playbooks/site.yml --skip-tags k8s-clust
 ├── playbooks/
 │   ├── site.yml              # Main deployment playbook
 │   ├── seed.yml              # Registry seeding (internet-connected machine)
-│   └── roles/                # Per-service Ansible roles
+│   └── roles/
+│       ├── 00_prerequisites/ # Pre-flight checks (kubectl, helm)
+│       ├── 01_k8s-cluster/   # kubeadm K8s cluster install
+│       ├── 02_ingress/       # nginx-ingress controller
+│       ├── 03_storage/       # local-path-provisioner
+│       ├── 04_step-ca/       # Private ACME CA
+│       ├── 05_harbor/        # Container & Helm OCI registry
+│       ├── 06_nexus/         # APT, PyPI, raw artifact repo
+│       ├── 07_gitea/         # Internal Git server
+│       ├── 08_seaweedfs/     # S3-compatible object storage
+│       └── common/           # Shared Helm deploy task
 ├── group_vars/
 │   └── all.yml               # All configuration variables
 ├── inventory/
@@ -211,8 +221,7 @@ ansible-playbook -i inventory/hosts.yml playbooks/site.yml --skip-tags k8s-clust
 ## Deployment Order
 
 ```
-K8s cluster → prerequisites → ingress → step-ca → storage
-            → harbor → nexus → gitea → seaweedfs
+K8s cluster → prerequisites → ingress → step-ca → storage → harbor → nexus → gitea → seaweedfs
 ```
 
 > **Note:** step-ca deploys before storage because the cert-manager ClusterIssuer must exist before other services can request TLS certificates.
