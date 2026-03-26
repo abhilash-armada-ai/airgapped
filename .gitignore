@@ -1,0 +1,9 @@
+# Secrets - never commit
+kubeconfig
+*.pem
+*.key
+
+# Ansible
+*.retry
+/tmp/
+fact_cache/
