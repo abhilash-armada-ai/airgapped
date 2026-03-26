@@ -33,6 +33,18 @@
     remote_src: true
     mode: '0600'
 
+# Install Helm if not present
+- name: Init Master | Check if Helm is installed
+  ansible.builtin.command: helm version --short
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Init Master | Install Helm
+  ansible.builtin.shell: |
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  when: helm_check.rc != 0
+
 # Install Cilium CNI
 - name: Init Master | Add Cilium Helm repository
   kubernetes.core.helm_repository:

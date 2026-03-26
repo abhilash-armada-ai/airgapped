@@ -65,22 +65,22 @@ k8s_cluster:
   # Node configuration - define your cluster nodes
   masters:
     - hostname: "master-1"
-      ip: "192.168.1.10"
+      ip: "34.93.69.157"
       # Additional masters for HA (optional)
       # - hostname: "master-2"
       #   ip: "192.168.1.11"
 
-  workers:
-    - hostname: "worker-1"
-      ip: "192.168.1.20"
-    - hostname: "worker-2"
-      ip: "192.168.1.21"
+  workers: []
+    # - hostname: "worker-1"
+    #   ip: "192.168.1.20"
+    # - hostname: "worker-2"
+    #   ip: "192.168.1.21"
     # Add more workers as needed
 
   # SSH configuration for node access
   ssh:
-    user: "ubuntu"
-    private_key_path: "~/.ssh/id_rsa"
+    user: "abhilash"
+    private_key_path: "~/.ssh/id_ed25519"
     become: true
 
 # ========================================
