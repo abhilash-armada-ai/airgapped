@@ -11,9 +11,12 @@
 #
 # Optional variables:
 #   - deploy_repo_name: Helm repo name (default: deploy_name)
-#   - deploy_wait: Wait for deployment (default: true)
-#   - deploy_timeout: Timeout for wait (default: 10m)
-#   - deploy_create_namespace: Create namespace if missing (default: true)
+#   - deploy_wait: Wait for deployment (default: false)
+#   - deploy_wait_timeout: Timeout for wait (default: 15m)
+#   - deploy_create_namespace: Create namespace if missing (default: false)
+#   - deploy_force: Force resource update (default: false)
+#   - deploy_retries: Number of retries on failure (default: 0)
+#   - deploy_retry_delay: Delay between retries in seconds (default: 0)
 #
 # Values file: role_path/templates/charts/<deploy_chart_name>/values.yaml.j2
 
@@ -29,7 +32,7 @@
     kind: Namespace
     name: "{{ deploy_namespace }}"
     state: present
-  when: deploy_create_namespace | default(true) | bool
+  when: deploy_create_namespace | default(false) | bool
 
 - name: "{{ deploy_name }} | Deploy Helm chart"
   kubernetes.core.helm:
@@ -38,10 +41,14 @@
     chart_ref: "{{ deploy_repo_name | default(deploy_name) }}/{{ deploy_chart_name }}"
     chart_version: "{{ deploy_chart_version }}"
     values: "{{ lookup('ansible.builtin.template', role_path + '/templates/charts/' + deploy_chart_name + '/values.yaml.j2') | from_yaml }}"
-    wait: "{{ deploy_wait | default(true) | bool }}"
-    timeout: "{{ deploy_timeout | default('10m') }}"
-    create_namespace: "{{ deploy_create_namespace | default(true) | bool }}"
+    wait: "{{ deploy_wait | default(false) | bool }}"
+    wait_timeout: "{{ deploy_wait_timeout | default('15m') }}"
+    create_namespace: "{{ deploy_create_namespace | default(false) | bool }}"
+    force: "{{ deploy_force | default(false) | bool }}"
     state: present
+  retries: "{{ deploy_retries | default(0) }}"
+  delay: "{{ deploy_retry_delay | default(0) }}"
+  until: helm_deploy_result is succeeded
   register: helm_deploy_result
 
 - name: "{{ deploy_name }} | Display deployment status"

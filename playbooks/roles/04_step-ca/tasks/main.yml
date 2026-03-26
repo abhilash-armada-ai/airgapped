@@ -15,7 +15,8 @@
     deploy_chart_repo: "{{ step_ca_chart_repo }}"
     deploy_chart_name: step-certificates
     deploy_chart_version: "{{ step_ca_chart_version }}"
-    deploy_timeout: "10m"
+    deploy_wait: true
+    deploy_create_namespace: true
 
 - name: step-ca | Wait for deployment to be ready
   kubernetes.core.k8s_info:

@@ -40,20 +40,8 @@
         deploy_chart_repo: "{{ storage_chart_repo }}"
         deploy_chart_name: "local-path-provisioner"
         deploy_chart_version: "{{ storage.chart_version | default(storage_chart_version) }}"
-        deploy_timeout: "5m"
-
-- name: LocalPath | Wait for provisioner deployment to be ready
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: local-path-provisioner
-    namespace: "{{ _storage_namespace }}"
-  register: provisioner_deployment
-  until:
-    - provisioner_deployment.resources | length > 0
-    - provisioner_deployment.resources[0].status.readyReplicas | default(0) >= 1
-  retries: 30
-  delay: 5
+        deploy_wait_timeout: "5m"
+        deploy_wait: true
 
 - name: LocalPath | Set as default StorageClass
   kubernetes.core.k8s:

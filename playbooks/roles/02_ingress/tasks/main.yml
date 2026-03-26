@@ -19,8 +19,10 @@
     deploy_chart_repo: "{{ ingress_chart_repo }}"
     deploy_chart_name: "ingress-nginx"
     deploy_chart_version: "{{ _ingress_chart_version }}"
-    deploy_timeout: "{{ ingress_deploy_timeout | default('10m') }}"
+    deploy_wait: true
+    deploy_wait_timeout: "{{ ingress_deploy_timeout | default('10m') }}"
     deploy_values_template: true
+    deploy_create_namespace: true
 
 - name: Ingress | Wait for controller deployment to be ready
   kubernetes.core.k8s_info:

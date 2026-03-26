@@ -48,25 +48,6 @@
     - inventory_hostname == groups['masters'][0]
 
 # ==================================================
-# Join additional masters (HA setup)
-# ==================================================
-- name: K8s Cluster | Join additional masters
-  ansible.builtin.include_tasks: join-master.yml
-  when:
-    - not k8s_admin_conf.stat.exists
-    - inventory_hostname in groups['masters']
-    - inventory_hostname != groups['masters'][0]
-
-# ==================================================
-# Join worker nodes
-# ==================================================
-- name: K8s Cluster | Join worker nodes
-  ansible.builtin.include_tasks: join-worker.yml
-  when:
-    - not k8s_admin_conf.stat.exists
-    - inventory_hostname in groups['workers']
-
-# ==================================================
 # Post-installation (first master)
 # ==================================================
 - name: K8s Cluster | Post-installation tasks

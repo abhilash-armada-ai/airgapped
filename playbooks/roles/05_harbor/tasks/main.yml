@@ -40,7 +40,7 @@
     deploy_chart_repo: "{{ harbor_chart_repo }}"
     deploy_chart_name: "{{ harbor_chart_name }}"
     deploy_chart_version: "{{ harbor_chart_version }}"
-    deploy_timeout: "15m"
+    deploy_wait: true
 
 - name: Harbor | Wait for core to be ready
   kubernetes.core.k8s_info:

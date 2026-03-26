@@ -133,7 +133,6 @@ docker run -it --rm \
   -v ~/.ssh/id_rsa:/root/.ssh/id_rsa:ro \
   -v $(pwd)/group_vars/all.yml:/airgapped/group_vars/all.yml \
   -v ~/.kube/config:/root/.kube/config:ro \
-  -e HARBOR_ADMIN_PASSWORD=secret \
   air-gap
 ```
 

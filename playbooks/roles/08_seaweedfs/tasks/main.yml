@@ -73,7 +73,7 @@
     deploy_chart_repo: "{{ seaweedfs_chart_repo }}"
     deploy_chart_name: seaweedfs
     deploy_chart_version: "{{ seaweedfs_chart_version }}"
-    deploy_timeout: "15m"
+    deploy_wait: true
 
 - name: SeaweedFS | Wait for master to be ready
   kubernetes.core.k8s_info:

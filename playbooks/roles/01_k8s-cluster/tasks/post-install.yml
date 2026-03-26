@@ -1,6 +1,15 @@
 ---
 # Post-installation tasks
 
+- name: Post Install | Untaint control-plane node to allow workload scheduling
+  ansible.builtin.command: >
+    kubectl taint nodes {{ inventory_hostname }} node-role.kubernetes.io/control-plane:NoSchedule-
+  register: untaint_result
+  changed_when: "'untainted' in untaint_result.stdout"
+  failed_when:
+    - untaint_result.rc != 0
+    - "'not found' not in untaint_result.stderr"
+
 - name: Post Install | Wait for all nodes to be ready
   ansible.builtin.command: >
     kubectl wait --for=condition=Ready nodes --all --timeout=300s
