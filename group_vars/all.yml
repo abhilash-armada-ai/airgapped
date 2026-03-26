@@ -96,7 +96,12 @@ ingress:
   # Service type for the ingress controller
   # - LoadBalancer: For cloud or MetalLB environments
   # - NodePort: For bare-metal without LB
-  service_type: "LoadBalancer"
+  # - ClusterIP: Use with hostNetwork for single-node clusters
+  service_type: "ClusterIP"
+
+  # Enable hostNetwork to bind ports 80/443 directly on the node
+  # Recommended for single-node clusters without a cloud load balancer
+  host_network: true
 
   # If using NodePort, specify the ports
   http_node_port: 30080
