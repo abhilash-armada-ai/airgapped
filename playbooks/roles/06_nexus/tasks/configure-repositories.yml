@@ -15,17 +15,6 @@
   retries: 30
   delay: 10
 
-# Read the generated initial admin password from the Nexus pod
-- name: Nexus | Get initial admin password from pod
-  kubernetes.core.k8s_exec:
-    namespace: "{{ nexus_namespace }}"
-    pod: "{{ nexus_pod_name | default('nexus-0') }}"
-    container: nexus
-    command: cat /nexus-data/admin.password
-  register: nexus_initial_password
-  failed_when: false
-  changed_when: false
-  no_log: true
 
 - name: Nexus | Get Nexus pod name
   kubernetes.core.k8s_info:
