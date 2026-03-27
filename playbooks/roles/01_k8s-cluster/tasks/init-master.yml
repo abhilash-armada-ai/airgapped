@@ -86,28 +86,6 @@
   register: cilium_ready
   until: cilium_ready.rc == 0
 
-- name: Init Master | Generate join command for workers
-  ansible.builtin.command: kubeadm token create --print-join-command
-  register: join_command
-  changed_when: false
-
-- name: Init Master | Save join command
-  ansible.builtin.set_fact:
-    kubeadm_join_command: "{{ join_command.stdout }}"
-  delegate_to: localhost
-  delegate_facts: true
-
-- name: Init Master | Generate certificate key for control plane join
-  ansible.builtin.command: kubeadm init phase upload-certs --upload-certs
-  register: cert_key
-  changed_when: false
-
-- name: Init Master | Save certificate key
-  ansible.builtin.set_fact:
-    kubeadm_cert_key: "{{ cert_key.stdout_lines[-1] }}"
-  delegate_to: localhost
-  delegate_facts: true
-
 - name: Init Master | Clean up kubeadm config
   ansible.builtin.file:
     path: /tmp/kubeadm-config.yaml

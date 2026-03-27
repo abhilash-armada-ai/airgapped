@@ -25,7 +25,7 @@
   when: helm_check.rc != 0
 
 - name: Get kubectl version
-  ansible.builtin.command: kubectl version --client -o json
+  ansible.builtin.command: kubectl version --client
   register: kubectl_version
   changed_when: false
 
@@ -37,8 +37,8 @@
 - name: Display tool versions
   ansible.builtin.debug:
     msg: |
-      kubectl: {{ (kubectl_version.stdout | from_json).clientVersion.gitVersion }}
-      helm: {{ helm_version.stdout }}
+      kubectl: {{ kubectl_version.stdout | default('check mode') }}
+      helm: {{ helm_version.stdout | default('check mode') }}
 
 - name: Verify cluster connectivity
   kubernetes.core.k8s_cluster_info:

@@ -26,7 +26,7 @@
 # ============================================
 # PLAY 0: Build Dynamic Inventory
 # ============================================
-# Adds masters and workers from group_vars configuration
+# Adds masters from group_vars configuration
 - name: Build Dynamic Inventory for K8s Cluster
   hosts: localhost
   gather_facts: false
@@ -50,34 +50,19 @@
         - k8s_cluster.masters is defined
         - k8s_cluster.masters | length > 0
 
-    - name: Add worker nodes to inventory
-      ansible.builtin.add_host:
-        name: "{{ item.hostname }}"
-        groups: workers
-        ansible_host: "{{ item.ip }}"
-        ansible_user: "{{ k8s_cluster.ssh.user | default('ubuntu') }}"
-        ansible_ssh_private_key_file: "{{ k8s_cluster.ssh.private_key_path | default('~/.ssh/id_rsa') }}"
-        ansible_become: "{{ k8s_cluster.ssh.become | default(true) }}"
-      loop: "{{ k8s_cluster.workers | default([]) }}"
-      when:
-        - deploy_k8s_cluster | default(true) | bool
-        - k8s_cluster.workers is defined
-        - k8s_cluster.workers | length > 0
-
     - name: Display cluster node configuration
       ansible.builtin.debug:
         msg: |
           K8s Cluster Configuration:
             Masters: {{ k8s_cluster.masters | default([]) | map(attribute='hostname') | list }}
-            Workers: {{ k8s_cluster.workers | default([]) | map(attribute='hostname') | list }}
       when: deploy_k8s_cluster | default(true) | bool
 
 # ============================================
 # PLAY 1: Kubernetes Cluster Installation
 # ============================================
-# Installs kubeadm-based Kubernetes on master and worker nodes
+# Installs kubeadm-based Kubernetes on master nodes
 - name: Kubernetes Cluster Installation
-  hosts: masters:workers
+  hosts: masters
   gather_facts: true
   vars_files:
     - ../group_vars/all.yml
