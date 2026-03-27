@@ -42,26 +42,7 @@
       stringData:
         admin_access_key_id: "{{ seaweedfs_access_key }}"
         admin_secret_access_key: "{{ seaweedfs_secret_key }}"
-        # S3 config for SeaweedFS
-        config.json: |
-          {
-            "identities": [
-              {
-                "name": "admin",
-                "credentials": [
-                  {
-                    "accessKey": "{{ seaweedfs_access_key }}",
-                    "secretKey": "{{ seaweedfs_secret_key }}"
-                  }
-                ],
-                "actions": ["Admin", "Read", "Write", "List", "Tagging"]
-              },
-              {
-                "name": "anonymous",
-                "actions": ["Read", "List"]
-              }
-            ]
-          }
+        config.json: "{{ {'identities': [{'name': 'admin', 'credentials': [{'accessKey': seaweedfs_access_key, 'secretKey': seaweedfs_secret_key}], 'actions': ['Admin', 'Read', 'Write', 'List', 'Tagging']}, {'name': 'anonymous', 'actions': ['Read', 'List']}]} | to_json }}"
   no_log: true
 
 - name: SeaweedFS | Deploy with common helm-deploy task
