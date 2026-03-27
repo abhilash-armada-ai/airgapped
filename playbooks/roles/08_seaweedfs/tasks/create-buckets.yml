@@ -29,14 +29,10 @@
     _filer_pod_name: "{{ (filer_pods.resources | first).metadata.name if filer_pods.resources | length > 0 else ((filer_pods_alt.resources | first).metadata.name if filer_pods_alt.resources | default([]) | length > 0 else '') }}"
 
 - name: S3 Buckets | Create buckets via weed shell
-  kubernetes.core.k8s_exec:
-    namespace: "{{ seaweedfs_namespace }}"
-    pod: "{{ _filer_pod_name }}"
-    command:
-      - /bin/sh
-      - -c
-      - |
-        echo "s3.bucket.create -name {{ item.name }}" | /usr/bin/weed shell -master seaweedfs-master:9333
+  ansible.builtin.command:
+    cmd: >
+      kubectl exec -n {{ seaweedfs_namespace }} {{ _filer_pod_name }} --
+      sh -c "echo 's3.bucket.create -name {{ item.name }}' | /usr/bin/weed shell -master seaweedfs-master:9333"
   loop: "{{ seaweedfs_buckets }}"
   loop_control:
     label: "{{ item.name }}"
