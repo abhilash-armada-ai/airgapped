@@ -9,6 +9,11 @@ controller:
     default: true
     controllerValue: "k8s.io/ingress-nginx"
 
+{% if ingress.host_network | default(false) | bool %}
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+{% endif %}
+
   service:
     type: {{ _ingress_service_type | default('LoadBalancer') }}
 {% if _ingress_service_type | default('LoadBalancer') == 'NodePort' %}

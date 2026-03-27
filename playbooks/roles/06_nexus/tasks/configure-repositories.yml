@@ -95,6 +95,34 @@
     msg: "Cannot authenticate to Nexus with configured password — check NEXUS_ADMIN_PASSWORD"
   when: password_verify.status | default(0) != 200
 
+- name: Nexus | Get EULA status
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/system/eula"
+    method: GET
+    user: admin
+    password: "{{ nexus_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  register: _nexus_eula_status
+  no_log: true
+
+- name: Nexus | Accept EULA
+  ansible.builtin.uri:
+    url: "https://{{ nexus_host }}/service/rest/v1/system/eula"
+    method: POST
+    user: admin
+    password: "{{ nexus_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      accepted: true
+      disclaimer: "{{ _nexus_eula_status.json.disclaimer }}"
+    status_code: [204]
+  when: not (_nexus_eula_status.json.accepted | default(false) | bool)
+  no_log: true
+
 - name: Nexus | Enable anonymous access for reads
   ansible.builtin.uri:
     url: "https://{{ nexus_host }}/service/rest/v1/security/anonymous"
