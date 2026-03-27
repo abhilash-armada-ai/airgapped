@@ -28,17 +28,33 @@
   ansible.builtin.set_fact:
     _filer_pod_name: "{{ (filer_pods.resources | first).metadata.name if filer_pods.resources | length > 0 else ((filer_pods_alt.resources | first).metadata.name if filer_pods_alt.resources | default([]) | length > 0 else '') }}"
 
-- name: S3 Buckets | Create buckets via weed shell
-  ansible.builtin.command:
-    cmd: >
-      kubectl exec -n {{ seaweedfs_namespace }} {{ _filer_pod_name }} --
-      sh -c "echo 's3.bucket.create -name {{ item.name }}' | /usr/bin/weed shell -master seaweedfs-master:9333"
+- name: S3 Buckets | Create buckets via Job
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: "create-bucket-{{ item.name }}"
+        namespace: "{{ seaweedfs_namespace }}"
+      spec:
+        ttlSecondsAfterFinished: 60
+        template:
+          spec:
+            containers:
+              - name: create-bucket
+                image: chrislusf/seaweedfs
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    echo "s3.bucket.create -name {{ item.name }}" | /usr/bin/weed shell -master seaweedfs-master:9333
+            restartPolicy: Never
+        backoffLimit: 3
   loop: "{{ seaweedfs_buckets }}"
   loop_control:
     label: "{{ item.name }}"
   register: bucket_results
   failed_when: false
-  changed_when: bucket_results.rc == 0
   when: _filer_pod_name | length > 0
 
 - name: S3 Buckets | Display created buckets
