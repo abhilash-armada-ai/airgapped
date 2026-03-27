@@ -176,7 +176,7 @@ harbor_host: "harbor.{{ domain_suffix }}"
 harbor_chart_version: "1.16.0"
 harbor_admin_password: "{{ lookup('env', 'HARBOR_ADMIN_PASSWORD') | default('Harbor12345', true) }}"
 harbor_storage_size: "50Gi"
-harbor_registry_storage_size: "500Gi"
+harbor_registry_storage_size: "50Gi"
 
 # Harbor projects to create for mirroring
 harbor_projects:
@@ -210,7 +210,7 @@ nexus_namespace: "nexus"
 nexus_host: "nexus.{{ domain_suffix }}"
 nexus_chart_version: "64.2.0"
 nexus_admin_password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') | default('admin123', true) }}"
-nexus_storage_size: "100Gi"
+nexus_storage_size: "40Gi"
 
 # Nexus repositories to configure
 nexus_repositories:
