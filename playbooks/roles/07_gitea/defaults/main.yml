@@ -34,4 +34,4 @@ gitea_cpu_limit: "1"
 # SSH configuration
 gitea_ssh_enabled: true
 gitea_ssh_port: 22
-gitea_ssh_service_type: "LoadBalancer"
+gitea_ssh_service_type: "NodePort"
