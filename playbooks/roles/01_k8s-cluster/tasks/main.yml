@@ -1,6 +1,6 @@
 ---
 # Kubernetes cluster installation with kubeadm
-# This role runs on ALL cluster nodes (masters and workers)
+# This role runs on master nodes
 
 - name: K8s Cluster | Gather node facts
   ansible.builtin.setup:
