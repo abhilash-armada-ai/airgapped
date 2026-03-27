@@ -8,12 +8,12 @@ harbor_chart_repo: "https://helm.goharbor.io"
 harbor_chart_name: "harbor"
 harbor_chart_version: "1.18.3"
 
-harbor_admin_password: "Harbor12345"
-harbor_secret_key: "not-a-secure-key"
+harbor_admin_password: "{{ lookup('env', 'HARBOR_ADMIN_PASSWORD') | default('Harbor12345', true) }}"
+harbor_secret_key: "{{ lookup('env', 'HARBOR_SECRET_KEY') | default('', true) }}"
 
 # Storage configuration
 harbor_storage_class: "{{ storage_class | default('local-path') }}"
-harbor_registry_storage_size: "500Gi"
+harbor_registry_storage_size: "50Gi"
 harbor_database_storage_size: "5Gi"
 harbor_redis_storage_size: "1Gi"
 harbor_trivy_storage_size: "5Gi"

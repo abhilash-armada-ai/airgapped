@@ -39,13 +39,12 @@ k8s_cluster:
   masters:
     - hostname: master-1
       ip: 192.168.1.10
-  workers:
-    - hostname: worker-1
-      ip: 192.168.1.20
   ssh:
     user: ubuntu
     private_key_path: ~/.ssh/id_rsa
 ```
+
+> **Note:** This toolkit deploys a single-master cluster. Worker node configuration has been removed — all workloads run on the master node.
 
 ### Secrets (Environment Variables)
 
@@ -61,6 +60,16 @@ Secrets are read from environment variables with fallback defaults:
 | `SEAWEEDFS_SECRET_KEY` | SeaweedFS | `minioadmin` |
 
 > Change all defaults before deploying to production.
+
+### Storage Sizing
+
+Default persistent volume sizes (configurable in `group_vars/all.yml`):
+
+| Service | Variable | Default |
+|---------|----------|---------|
+| Harbor (metadata) | `harbor_storage_size` | `50Gi` |
+| Harbor (registry data) | `harbor_registry_storage_size` | `50Gi` |
+| Nexus | `nexus_storage_size` | `40Gi` |
 
 ### Disabling Components
 
@@ -209,7 +218,7 @@ ansible-playbook -i inventory/hosts.yml playbooks/site.yml --skip-tags k8s-clust
 ├── group_vars/
 │   └── all.yml               # All configuration variables
 ├── inventory/
-│   └── hosts.yml             # Inventory (masters/workers added dynamically)
+│   └── hosts.yml             # Inventory (masters added dynamically)
 ├── requirements.yml          # Ansible Galaxy collections
 ├── ansible.cfg               # Ansible configuration
 ├── Dockerfile                # Container image for running deployments
@@ -224,3 +233,5 @@ K8s cluster → prerequisites → ingress → step-ca → storage → harbor →
 ```
 
 > **Note:** step-ca deploys before storage because the cert-manager ClusterIssuer must exist before other services can request TLS certificates.
+>
+> step-ca runs as a **StatefulSet** (not a Deployment). The cert-manager ClusterIssuer communicates with it via the internal cluster DNS address (`step-certificates.<namespace>.svc.cluster.local:9000`) rather than the external ingress hostname, avoiding a TLS bootstrap dependency.
