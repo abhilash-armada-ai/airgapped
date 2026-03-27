@@ -9,7 +9,7 @@ step_ca_chart_name: "step-certificates"
 step_ca_chart_version: "1.30.0"
 
 # CA configuration
-step_ca_provisioner_name: "acme"
+step_ca_provisioner_name: "admin"
 step_ca_provisioner_password: "StepCA12345"
 step_ca_root_cn: "Air-Gap Root CA"
 step_ca_intermediate_cn: "Air-Gap Intermediate CA"
