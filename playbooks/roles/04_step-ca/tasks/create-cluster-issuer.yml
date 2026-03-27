@@ -1,10 +1,10 @@
 ---
 # Create cert-manager ClusterIssuer for step-ca
 
-- name: ClusterIssuer | Get step-ca root certificate secret
+- name: ClusterIssuer | Get step-ca root certificate from ConfigMap
   kubernetes.core.k8s_info:
     api_version: v1
-    kind: Secret
+    kind: ConfigMap
     name: step-certificates-certs
     namespace: "{{ step_ca_namespace }}"
   register: step_ca_certs
@@ -23,7 +23,7 @@
         namespace: cert-manager
       type: Opaque
       data:
-        ca.crt: "{{ step_ca_certs.resources[0].data['root_ca.crt'] }}"
+        ca.crt: "{{ step_ca_certs.resources[0].data['root_ca.crt'] | b64encode }}"
   no_log: true
 
 - name: ClusterIssuer | Get provisioner key ID
@@ -58,7 +58,7 @@
         name: step-ca-issuer
       spec:
         acme:
-          server: "https://{{ step_ca_host }}/acme/acme/directory"
+          server: "https://step-certificates.{{ step_ca_namespace }}.svc.cluster.local:9000/acme/acme/directory"
           skipTLSVerify: true  # Self-signed CA
           privateKeySecretRef:
             name: step-ca-acme-account-key

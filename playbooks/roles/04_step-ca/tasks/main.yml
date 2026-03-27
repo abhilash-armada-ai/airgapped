@@ -21,7 +21,7 @@
 - name: step-ca | Wait for deployment to be ready
   kubernetes.core.k8s_info:
     api_version: apps/v1
-    kind: Deployment
+    kind: StatefulSet
     name: step-certificates
     namespace: "{{ step_ca_namespace }}"
   register: step_ca_deployment
@@ -31,18 +31,18 @@
   retries: 30
   delay: 10
 
-- name: step-ca | Get root CA certificate
+- name: step-ca | Get root CA certificate from ConfigMap
   kubernetes.core.k8s_info:
     api_version: v1
-    kind: Secret
+    kind: ConfigMap
     name: step-certificates-certs
     namespace: "{{ step_ca_namespace }}"
-  register: ca_secret
+  register: ca_configmap
 
 - name: step-ca | Extract root CA certificate
   ansible.builtin.set_fact:
-    step_ca_root_cert: "{{ ca_secret.resources[0].data['root_ca.crt'] | b64decode }}"
-  when: ca_secret.resources | length > 0
+    step_ca_root_cert: "{{ ca_configmap.resources[0].data['root_ca.crt'] }}"
+  when: ca_configmap.resources | length > 0
 
 - name: step-ca | Create cert-manager ClusterIssuer
   ansible.builtin.include_tasks: create-cluster-issuer.yml
