@@ -43,7 +43,7 @@
 - name: Gitea | Wait for deployment to be ready
   kubernetes.core.k8s_info:
     api_version: apps/v1
-    kind: StatefulSet
+    kind: Deployment
     name: gitea
     namespace: "{{ gitea_namespace }}"
   register: gitea_sts

@@ -4,8 +4,10 @@
 replicaCount: {{ gitea_replicas }}
 
 image:
+  registry: docker.io
   repository: gitea/gitea
-  tag: ""  # Uses chart default
+  tag: "1.25.4" 
+  rootless: true
   pullPolicy: IfNotPresent
 
 gitea:
@@ -66,6 +68,7 @@ ingress:
 service:
   http:
     type: ClusterIP
+    clusterIP: "" 
     port: 3000
   ssh:
     type: {{ gitea_ssh_service_type }}
