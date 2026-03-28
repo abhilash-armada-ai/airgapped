@@ -102,7 +102,7 @@ ingress:
   class_name: "nginx"
 
   # Chart configuration
-  chart_version: "4.12.0"
+  chart_version: "4.15.0"
 
   # Resource limits
   replicas: 1
@@ -271,7 +271,6 @@ gitea_mirror_repos:
 step_ca_namespace: "step-ca"
 step_ca_host: "ca.{{ domain_suffix }}"
 step_ca_chart_version: "1.29.0"
-step_ca_provisioner_name: "acme"
 step_ca_provisioner_password: "{{ lookup('env', 'STEP_CA_PASSWORD') | default('StepCA12345', true) }}"
 step_ca_storage_size: "5Gi"
 

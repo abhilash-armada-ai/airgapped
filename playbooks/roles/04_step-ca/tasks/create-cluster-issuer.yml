@@ -26,14 +26,6 @@
         ca.crt: "{{ step_ca_certs.resources[0].data['root_ca.crt'] | b64encode }}"
   no_log: true
 
-- name: ClusterIssuer | Get provisioner key ID
-  kubernetes.core.k8s_info:
-    api_version: v1
-    kind: ConfigMap
-    name: step-certificates-config
-    namespace: "{{ step_ca_namespace }}"
-  register: step_ca_config
-
 - name: ClusterIssuer | Create provisioner secret
   kubernetes.core.k8s:
     state: present
@@ -78,7 +70,6 @@
     - issuer_status.resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length > 0
   retries: 30
   delay: 10
-  failed_when: false  # May take time for ACME registration
 
 - name: ClusterIssuer | Display status
   ansible.builtin.debug:

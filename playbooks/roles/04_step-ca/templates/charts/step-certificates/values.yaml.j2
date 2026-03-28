@@ -11,13 +11,9 @@ image:
 ca:
   name: "{{ step_ca_root_cn }}"
   address: ":9000"
-  dns: {{ step_ca_host }}
-  url: https://{{ step_ca_host }}
-  password: {{ step_ca_provisioner_password }}
-
-  provisioner:
-    name: {{ step_ca_provisioner_name }}
-    password: {{ step_ca_provisioner_password }}
+  dns: "{{ step_ca_host }}"
+  url: "https://{{ step_ca_host }}"
+  password: "{{ step_ca_provisioner_password }}"
 
   db:
     type: badgerv2
@@ -34,8 +30,8 @@ inject:
         key: /home/step/secrets/intermediate_ca_key
         address: ":9000"
         dnsNames:
-          - {{ step_ca_host }}
-          - step-certificates.{{ step_ca_namespace }}.svc.cluster.local
+          - "{{ step_ca_host }}"
+          - "step-certificates.{{ step_ca_namespace }}.svc.cluster.local"
           - "127.0.0.1"
         logger:
           format: text
@@ -57,7 +53,7 @@ inject:
           maxVersion: 1.3
           renegotiation: false
       defaults.json:
-        ca-url: https://step-certificates.{{ step_ca_namespace }}.svc.cluster.local:9000
+        ca-url: "https://step-certificates.{{ step_ca_namespace }}.svc.cluster.local:9000"
         ca-config: /home/step/config/ca.json
         fingerprint: ""
         root: /home/step/certs/root_ca.crt
@@ -75,18 +71,18 @@ service:
 
 ingress:
   enabled: true
-  className: {{ step_ca_ingress_class }}
+  className: "{{ step_ca_ingress_class }}"
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
   hosts:
-    - host: {{ step_ca_host }}
+    - host: "{{ step_ca_host }}"
       paths:
         - path: /
           pathType: Prefix
   tls:
     - hosts:
-        - {{ step_ca_host }}
+        - "{{ step_ca_host }}"
       secretName: step-ca-tls
 
 resources:
